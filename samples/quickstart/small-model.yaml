@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    model.aibrix.ai/name: qwen2.5-1.5b-instruct
+    model.aibrix.ai/port: "8000"
+  name: qwen2.5-1.5b-instruct
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      model.aibrix.ai/name: qwen2.5-1.5b-instruct
+      model.aibrix.ai/port: "8000"
+  template:
+    metadata:
+      labels:
+        model.aibrix.ai/name: qwen2.5-1.5b-instruct
+        model.aibrix.ai/port: "8000"
+    spec:
+      containers:
+        - command:
+            - python3
+            - -m
+            - vllm.entrypoints.openai.api_server
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --uvicorn-log-level
+            - warning
+            - --model
+            - Qwen/Qwen2.5-1.5B-Instruct
+            - --served-model-name
+            - qwen2.5-1.5b-instruct
+            - --max-model-len
+            - "8192"
+            - --gpu-memory-utilization
+            - "0.85"
+          image: vllm/vllm-openai:v0.11.0
+          imagePullPolicy: IfNotPresent
+          name: vllm-openai
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+            requests:
+              nvidia.com/gpu: "1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            failureThreshold: 3
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            failureThreshold: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            failureThreshold: 120
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
