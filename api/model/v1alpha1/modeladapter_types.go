@@ -55,6 +55,16 @@ type ModelAdapterSpec struct {
 	// +kubebuilder:validation:Enum=1
 	Replicas *int32 `json:"replicas,omitempty"`
 
+	// Tenant identifies the tenant that owns this model adapter (for multi-tenant isolation)
+	// If not specified, defaults to "default" tenant for backward compatibility
+	// +optional
+	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_-]+$
+	Tenant string `json:"tenant,omitempty"`
+
+	// RoutingHeaders specifies custom headers to use for tenant-aware routing
+	// +optional
+	RoutingHeaders []string `json:"routingHeaders,omitempty"`
+
 	// Additional fields can be added here to customize the scheduling and deployment
 	// +optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
@@ -103,6 +113,10 @@ type ModelAdapterStatus struct {
 	// - If replicas is 1: equals 1 (single pod)
 	// +optional
 	DesiredReplicas int32 `json:"desiredReplicas,omitempty"`
+
+	// TenantHash is a hash of the tenant configuration for cache invalidation
+	// +optional
+	TenantHash string `json:"tenantHash,omitempty"`
 
 	// Conditions represents the observation of a model adapter's current state.
 	// +patchMergeKey=type

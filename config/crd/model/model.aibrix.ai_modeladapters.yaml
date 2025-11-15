@@ -91,8 +91,20 @@ spec:
                 - 1
                 format: int32
                 type: integer
+              routingHeaders:
+                description: RoutingHeaders specifies custom headers to use for tenant-aware
+                  routing
+                items:
+                  type: string
+                type: array
               schedulerName:
                 default: default
+                type: string
+              tenant:
+                description: |-
+                  Tenant identifies the tenant that owns this model adapter (for multi-tenant isolation)
+                  If not specified, defaults to "default" tenant for backward compatibility
+                pattern: ^[a-zA-Z0-9_-]+$
                 type: string
             required:
             - artifactURL
@@ -100,6 +112,14 @@ spec:
             type: object
           status:
             properties:
+              cache:
+                description: Cache contains metadata for efficient cache lookups
+                properties:
+                  tenantHash:
+                    description: TenantHash is a hash of the composite key (tenant::model::deploymentRev)
+                      used for efficient cache lookups
+                    type: string
+                type: object
               candidates:
                 format: int32
                 type: integer

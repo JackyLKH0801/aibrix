@@ -136,7 +136,7 @@ var _ = Describe("SLO", func() {
 	Describe("Error handling", func() {
 		It("Should use fallback router if no profile", func() {
 			store.UpdateModelProfile(profileKey, nil, true)
-			pods, _ := store.ListPodsByModel(model)
+			pods, _ := store.ListPodsByModel(model, "default")
 
 			// Use a context with a timeout to ensure the function doesn't block indefinitely
 			req, cancel := newReqWithTimeout(model, "message", "request_id", 10*time.Millisecond)
@@ -154,7 +154,7 @@ var _ = Describe("SLO", func() {
 			store.UpdateModelProfile(profileKey, profile, true)
 
 			c, _ := cache.Get()
-			pods, _ := c.ListPodsByModel(model)
+			pods, _ := c.ListPodsByModel(model, "default")
 
 			// Use a context with a timeout to ensure the function doesn't block indefinitely
 			req, cancel := newReqWithTimeout(model, "message", "request_id", 10*time.Millisecond)
@@ -168,7 +168,7 @@ var _ = Describe("SLO", func() {
 		It("Should use fallback router if profile contains SLO info but misses corresponding metrics (TPOT)", func() {
 			profile.SLOs.TTFT = 1 // Overwrite SLO in term of TPOT (TPOT has higher priority than E2E)
 			store.UpdateModelProfile(profileKey, profile, true)
-			pods, _ := store.ListPodsByModel(model)
+			pods, _ := store.ListPodsByModel(model, "default")
 
 			// Use a context with a timeout to ensure the function doesn't block indefinitely
 			req, cancel := newReqWithTimeout(model, "message", "request_id", 10*time.Millisecond)
@@ -180,7 +180,7 @@ var _ = Describe("SLO", func() {
 		})
 
 		It("Should report cache.ErrorSLOFailureRequest if profile predicts SLO violation", func() {
-			pods, _ := store.ListPodsByModel(model)
+			pods, _ := store.ListPodsByModel(model, "default")
 
 			// Provide prediction history
 			predictor, _ := store.GetOutputPredictor(model)
@@ -204,7 +204,7 @@ var _ = Describe("SLO", func() {
 	})
 
 	It("Cold start should not throw error", func() {
-		pods, _ := store.ListPodsByModel(model)
+		pods, _ := store.ListPodsByModel(model, "default")
 
 		// Use a context with a timeout to ensure the function doesn't block indefinitely
 		req, cancel := newReqWithTimeout(model, "message", "request_id", 10*time.Millisecond)
@@ -219,7 +219,7 @@ var _ = Describe("SLO", func() {
 	})
 
 	It("Packing router should prefer the same pod", func() {
-		pods, _ := store.ListPodsByModel(model)
+		pods, _ := store.ListPodsByModel(model, "default")
 
 		req1, cancel1 := newReqWithTimeout(model, "message1", "request_id_1", 100*time.Millisecond)
 		req2, cancel2 := newReqWithTimeout(model, "message2", "request_id_2", 100*time.Millisecond)
@@ -241,7 +241,7 @@ var _ = Describe("SLO", func() {
 	})
 
 	It("Queue router should be blocked and released successfully", func() {
-		pods, _ := store.ListPodsByModel(model)
+		pods, _ := store.ListPodsByModel(model, "default")
 
 		makeOneRequest := func(id int, timeout time.Duration) (*types.RoutingContext, float64) {
 			defer GinkgoRecover()
@@ -290,7 +290,7 @@ var _ = Describe("SLO", func() {
 
 	It("Should cache.RequestTrace counts one and one only", func() {
 		store = cache.InitWithRequestTrace(store)
-		pods, _ := store.ListPodsByModel(model)
+		pods, _ := store.ListPodsByModel(model, "default")
 
 		// Use a context with a timeout to ensure the function doesn't block indefinitely
 		req, cancel := newReqWithTimeout(model, "message", "request_id", 10*time.Millisecond)

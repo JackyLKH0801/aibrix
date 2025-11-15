@@ -65,18 +65,43 @@ func (c *Store) ListPods() []*v1.Pod {
 // Parameters:
 //
 //	modelName: Name of the model to query
+//	tenantID: Tenant identifier for multi-tenant filtering (optional, defaults to "default")
 //
 // Returns:
 //
 //	types.PodList: PodArray wrapper for a slice of Pod objects
 //	error: Error if model doesn't exist
-func (c *Store) ListPodsByModel(modelName string) (types.PodList, error) {
+func (c *Store) ListPodsByModel(modelName string, tenantID string) (types.PodList, error) {
+	// Default to "default" tenant if not specified (backward compatibility)
+	if tenantID == "" {
+		tenantID = "default"
+	}
+
 	meta, ok := c.metaModels.Load(modelName)
 	if !ok {
 		return nil, fmt.Errorf("model does not exist in the cache: %s", modelName)
 	}
 
-	return meta.Pods.Array(), nil
+	// Filter pods by tenant label
+	// In future iterations, we'll use composite keys (tenant::model::deploymentRev)
+	// For now, filter by tenant label on pods
+	allPods := meta.Pods.Array()
+	if tenantID == "default" {
+		// Backward compatibility: return all pods for default tenant
+		return allPods, nil
+	}
+
+	// Filter pods matching the tenant ID
+	var filteredPods []*v1.Pod
+	for _, pod := range allPods.All() {
+		if pod.Labels != nil {
+			if podTenant, exists := pod.Labels["tenant.aibrix.ai/id"]; exists && podTenant == tenantID {
+				filteredPods = append(filteredPods, pod)
+			}
+		}
+	}
+
+	return &utils.PodArray{Pods: filteredPods}, nil
 }
 
 // ListModels returns all cached model names

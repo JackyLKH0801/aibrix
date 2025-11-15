@@ -57,7 +57,12 @@ func (s *Server) HandleRequestBody(ctx context.Context, requestID string, req *e
 	}
 
 	// early reject if no pods are ready to accept request for a model
-	podsArr, err := s.cache.ListPodsByModel(model)
+	// Pass tenant ID for multi-tenant pod filtering
+	tenantID := routingCtx.TenantID
+	if tenantID == "" {
+		tenantID = "default" // Backward compatibility
+	}
+	podsArr, err := s.cache.ListPodsByModel(model, tenantID)
 	if err != nil || podsArr == nil || utils.CountRoutablePods(podsArr.All()) == 0 {
 		klog.ErrorS(err, "no ready pod available", "requestID", requestID, "model", model)
 		return generateErrorResponse(envoyTypePb.StatusCode_ServiceUnavailable,
@@ -89,7 +94,7 @@ func (s *Server) HandleRequestBody(ctx context.Context, requestID string, req *e
 			"content-length", strconv.Itoa(len(routingCtx.ReqBody)),
 			"X-Request-Id", routingCtx.RequestID)
 		klog.InfoS("request start", "requestID", requestID, "requestPath", requestPath, "model", model, "stream", stream, "routingAlgorithm", routingAlgorithm,
-			"targetPodIP", targetPodIP, "routingDuration", routingCtx.GetRoutingDelay())
+			"targetPodIP", targetPodIP, "routingDuration", routingCtx.GetRoutingDelay(), "tenantID", routingCtx.TenantID, "deploymentID", routingCtx.DeploymentID)
 	}
 
 	term = s.cache.AddRequestCount(routingCtx, requestID, model)

@@ -279,7 +279,7 @@ var _ = Describe("Cache", func() {
 	It("should pods returned after updatePod reflect updated pods", func() {
 		oldPod := getNewPod("p1", "default", "m1", 0)
 		cache.addPod(oldPod)
-		pods, err := cache.ListPodsByModel("m1")
+		pods, err := cache.ListPodsByModel("m1", "default")
 		Expect(err).To(BeNil())
 		Expect(pods.Len()).To(Equal(1))
 		Expect(utils.CountRoutablePods(pods.All())).To(Equal(0))
@@ -287,7 +287,7 @@ var _ = Describe("Cache", func() {
 		newPod := getReadyPod("p1", "default", "m1", 0) // IP may changed due to migration
 		cache.updatePod(oldPod, newPod)
 
-		pods, err = cache.ListPodsByModel("m1")
+		pods, err = cache.ListPodsByModel("m1", "default")
 		Expect(err).To(BeNil())
 		Expect(pods.Len()).To(Equal(1))
 		Expect(utils.CountRoutablePods(pods.All())).To(Equal(1))
@@ -453,10 +453,10 @@ var _ = Describe("Cache", func() {
 		cache.addPod(pod1)
 		cache.addPod(pod2)
 
-		_, err := cache.ListPodsByModel("m0")
+		_, err := cache.ListPodsByModel("m0", "default")
 		Expect(err).ToNot(BeNil())
 
-		pods, err := cache.ListPodsByModel("m1")
+		pods, err := cache.ListPodsByModel("m1", "default")
 		Expect(err).To(BeNil())
 		Expect(pods.Len()).To(Equal(1)) // Must be slice
 		Expect(pods.All()).To(HaveLen(1))

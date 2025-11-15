@@ -57,8 +57,8 @@ func (m *MockCache) HasModel(model string) bool {
 	return args.Bool(0)
 }
 
-func (m *MockCache) ListPodsByModel(model string) (types.PodList, error) {
-	args := m.Called(model)
+func (m *MockCache) ListPodsByModel(model string, tenantID string) (types.PodList, error) {
+	args := m.Called(model, tenantID)
 	return args.Get(0).(types.PodList), args.Error(1)
 }
 

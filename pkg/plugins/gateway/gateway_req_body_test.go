@@ -94,7 +94,7 @@ func Test_handleRequestBody(t *testing.T) {
 						},
 					},
 				}
-				mockCache.On("ListPodsByModel", "test-model").Return(podList, nil)
+				mockCache.On("ListPodsByModel", "test-model", "default").Return(podList, nil)
 				mockCache.On("AddRequestCount", mock.Anything, mock.Anything, "test-model").Return(int64(1))
 			},
 			expected: testResponse{
@@ -205,7 +205,7 @@ func Test_handleRequestBody(t *testing.T) {
 					},
 				}
 				mockCache.On("HasModel", "test-model").Return(true)
-				mockCache.On("ListPodsByModel", "test-model").Return(podList, nil)
+				mockCache.On("ListPodsByModel", "test-model", "default").Return(podList, nil)
 				mockCache.On("AddRequestCount", mock.Anything, mock.Anything, "test-model").Return(int64(1))
 				mockRouter.On("Route", mock.Anything, mock.Anything).Return("1.2.3.4:8000", nil).Once()
 			},
@@ -294,7 +294,7 @@ func Test_handleRequestBody(t *testing.T) {
 						},
 					},
 				}
-				mockCache.On("ListPodsByModel", "test-model").Return(podList, nil)
+				mockCache.On("ListPodsByModel", "test-model", "default").Return(podList, nil)
 				mockCache.On("AddRequestCount", mock.Anything, mock.Anything, "test-model").Return(int64(1))
 			},
 			expected: testResponse{
@@ -382,7 +382,7 @@ func Test_handleRequestBody(t *testing.T) {
 						},
 					},
 				}
-				mockCache.On("ListPodsByModel", "test-model").Return(podList, nil)
+				mockCache.On("ListPodsByModel", "test-model", "default").Return(podList, nil)
 				// No AddRequestCount expectation since the function should return early with error
 			},
 			expected: testResponse{
@@ -428,7 +428,7 @@ func Test_handleRequestBody(t *testing.T) {
 				podList := &utils.PodArray{
 					Pods: []*v1.Pod{},
 				}
-				mockCache.On("ListPodsByModel", "test-model").Return(podList, nil)
+				mockCache.On("ListPodsByModel", "test-model", "default").Return(podList, nil)
 				// No AddRequestCount expectation since the function should return early with error
 			},
 			expected: testResponse{
@@ -489,7 +489,7 @@ func Test_handleRequestBody(t *testing.T) {
 						},
 					},
 				}
-				mockCache.On("ListPodsByModel", "test-model").Return(podList, nil)
+				mockCache.On("ListPodsByModel", "test-model", "default").Return(podList, nil)
 				// No AddRequestCount expectation since the function should return early with error
 			},
 			expected: testResponse{
@@ -547,7 +547,7 @@ func Test_handleRequestBody(t *testing.T) {
 						},
 					},
 				}
-				mockCache.On("ListPodsByModel", "test-model").Return(podList, nil)
+				mockCache.On("ListPodsByModel", "test-model", "default").Return(podList, nil)
 				// No AddRequestCount expectation since the function should return early with error
 			},
 			expected: testResponse{

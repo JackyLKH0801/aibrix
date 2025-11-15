@@ -350,7 +350,7 @@ func (c *Store) fetchMetrics(pod *Pod, allMetrics map[string]*dto.MetricFamily, 
 	}
 	engineType, err := getPodLabel(pod, engineLabel)
 	if engineType == "" {
-		klog.V(4).Infof(err.Error())
+		klog.V(4).InfoS("Engine type label not found", "error", err)
 		engineType = defaultEngineLabelValue
 	}
 	rawMetricName, ok := metric.EngineMetricsNameMapping[engineType]

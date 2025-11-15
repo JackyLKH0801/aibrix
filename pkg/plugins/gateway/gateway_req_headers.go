@@ -48,6 +48,8 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, requestID string, req
 
 	h := req.Request.(*extProcPb.ProcessingRequest_RequestHeaders)
 	reqHeaders := map[string]string{}
+	var authHeader string
+
 	for _, n := range h.RequestHeaders.Headers.Headers {
 		switch strings.ToLower(n.Key) {
 		case userKey:
@@ -55,8 +57,39 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, requestID string, req
 		case pathKey:
 			requestPath = string(n.RawValue)
 		case authorizationKey:
-			reqHeaders[n.Key] = string(n.RawValue)
+			authHeader = string(n.RawValue)
+			reqHeaders[n.Key] = authHeader
 		}
+	}
+
+	// Extract tenant metadata from headers and JWT claims
+	tenantMetadata, err := extractTenantMetadata(h.RequestHeaders.Headers.Headers, authHeader)
+	if err != nil {
+		klog.ErrorS(err, "failed to extract tenant metadata", "requestID", requestID)
+		return generateErrorResponse(
+			envoyTypePb.StatusCode_BadRequest,
+			[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+				Key: HeaderErrorRequestBodyProcessing, RawValue: []byte("invalid tenant metadata"),
+			}}}, "invalid tenant metadata", "", ""), utils.User{}, rpm, routingCtx
+	}
+
+	if err := detectTenantConflicts(tenantMetadata); err != nil {
+		klog.ErrorS(err, "tenant metadata conflict", "requestID", requestID)
+		return generateErrorResponse(
+			envoyTypePb.StatusCode_BadRequest,
+			[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+				Key: HeaderErrorRequestBodyProcessing, RawValue: []byte("conflicting tenant metadata"),
+			}}}, err.Error(), "", ""), utils.User{}, rpm, routingCtx
+	}
+
+	// Validate tenant metadata
+	if err := validateTenantMetadata(tenantMetadata); err != nil {
+		klog.ErrorS(err, "invalid tenant metadata", "requestID", requestID)
+		return generateErrorResponse(
+			envoyTypePb.StatusCode_BadRequest,
+			[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+				Key: HeaderErrorRequestBodyProcessing, RawValue: []byte("invalid tenant metadata"),
+			}}}, err.Error(), "", ""), utils.User{}, rpm, routingCtx
 	}
 
 	routingStrategy, routingStrategyEnabled := getRoutingStrategy(h.RequestHeaders.Headers.Headers)
@@ -92,6 +125,11 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, requestID string, req
 	routingCtx = types.NewRoutingContext(ctx, routingAlgorithm, "", "", requestID, user.Name)
 	routingCtx.ReqPath = requestPath
 	routingCtx.ReqHeaders = reqHeaders
+
+	// Populate tenant metadata in routing context
+	routingCtx.TenantID = tenantMetadata.TenantID
+	routingCtx.DeploymentID = tenantMetadata.DeploymentID
+	routingCtx.TenantMetadata = tenantMetadata.TenantMetadata
 
 	headers := []*configPb.HeaderValueOption{}
 	headers = append(headers, &configPb.HeaderValueOption{

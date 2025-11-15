@@ -74,7 +74,29 @@ func (w *ModelAdapterWebhook) ValidateCreate(ctx context.Context, obj runtime.Ob
 		allErrs = append(allErrs, field.NotSupported(specPath.Child("artifactURL"), adapter.Spec.ArtifactURL, utils.AllowedSchemas))
 	}
 
+	// Validate tenant field if provided
+	if adapter.Spec.Tenant != "" {
+		if !isValidTenantID(adapter.Spec.Tenant) {
+			allErrs = append(allErrs, field.Invalid(specPath.Child("tenant"), adapter.Spec.Tenant, "tenant ID must contain only alphanumeric characters, hyphens, and underscores"))
+		}
+	}
+
 	return nil, allErrs.ToAggregate()
+}
+
+// isValidTenantID checks if tenant ID contains only allowed characters
+func isValidTenantID(tenantID string) bool {
+	if tenantID == "" {
+		return false
+	}
+
+	for _, ch := range tenantID {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') || ch == '-' || ch == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type

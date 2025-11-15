@@ -58,6 +58,12 @@ type RoutingContext struct {
 	TraceTerm   int64     // Trace term identifier, available after AddRequestCount call.
 	RoutedTime  time.Time // Time consumed during routing.
 
+	// Multi-tenant fields
+	TenantID       string // Tenant identifier from X-Tenant-ID header or JWT claim
+	DeploymentID   string // Optional deployment override from X-Deployment-ID header or JWT claim
+	DeploymentRev  string // Deployment revision hash for cache key uniqueness
+	TenantMetadata string // JSON blob from X-Tenant-Metadata for LoRA/auth context
+
 	ReqHeaders map[string]string
 	ReqBody    []byte
 	ReqPath    string
@@ -276,6 +282,12 @@ func (r *RoutingContext) reset(ctx context.Context, algorithms RoutingAlgorithm,
 	r.ReqPath = ""
 	r.ReqBody = []byte{}
 	// RoutedTime will not be reset, it must before ReqeustTime at this time.
+
+	// Reset multi-tenant fields
+	r.TenantID = ""
+	r.DeploymentID = ""
+	r.DeploymentRev = ""
+	r.TenantMetadata = ""
 
 	r.targetPodSet = make(chan struct{}) // Initialize channel
 	r.targetPod.Store(nilPod)

@@ -214,7 +214,7 @@ func generateErrorResponse(statusCode envoyTypePb.StatusCode, headers []*configP
 				Headers: &extProcPb.HeaderMutation{
 					SetHeaders: headers,
 				},
-				Body: generateErrorMessageWithHTTPCode(message, int(statusCode), errorCode, param),
+				Body: []byte(generateErrorMessageWithHTTPCode(message, int(statusCode), errorCode, param)),
 			},
 		},
 	}
@@ -280,7 +280,7 @@ func buildErrorResponse(statusCode envoyTypePb.StatusCode, errBody, errorCode, p
 				Headers: &extProcPb.HeaderMutation{
 					SetHeaders: buildEnvoyProxyHeaders([]*configPb.HeaderValueOption{}, headers...),
 				},
-				Body: generateErrorMessageWithHTTPCode(errBody, int(statusCode), errorCode, param),
+				Body: []byte(generateErrorMessageWithHTTPCode(errBody, int(statusCode), errorCode, param)),
 			},
 		},
 	}

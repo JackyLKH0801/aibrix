@@ -47,6 +47,11 @@ const (
 	HeaderRequestID          = "request-id"
 	HeaderModel              = "model"
 
+	// Multi-tenant Headers
+	HeaderTenantID       = "x-tenant-id"
+	HeaderDeploymentID   = "x-deployment-id"
+	HeaderTenantMetadata = "x-tenant-metadata"
+
 	// RPM & TPM Update Errors
 	HeaderUpdateTPM        = "x-update-tpm"
 	HeaderUpdateRPM        = "x-update-rpm"
@@ -61,6 +66,9 @@ const (
 
 	// Envs
 	EnvRoutingAlgorithm = "ROUTING_ALGORITHM"
+
+	// Default tenant for legacy requests
+	DefaultTenant = "default"
 )
 
 var (

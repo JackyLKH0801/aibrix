@@ -47,10 +47,11 @@ type PodCache interface {
 	// ListPodsByModel gets pods associated with a model
 	// Parameters:
 	//   modelName: Name of the model
+	//   tenantID: Tenant identifier for multi-tenant filtering (optional, defaults to "default")
 	// Returns:
 	//   map[string]*v1.Pod: Pod objects matching the criteria
 	//   error: Error information if operation fails
-	ListPodsByModel(modelName string) (types.PodList, error)
+	ListPodsByModel(modelName string, tenantID string) (types.PodList, error)
 }
 
 // ModelCache defines operations for model information caching
