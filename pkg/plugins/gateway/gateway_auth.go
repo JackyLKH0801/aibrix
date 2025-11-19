@@ -62,7 +62,9 @@ func (s *sidecarClient) Authenticate(ctx context.Context, authHeader string) (au
 		return res, auth.ErrUnauthorized
 	}
 
-	body := map[string]string{"authorization": authHeader}
+	// normalize common auth header formats (e.g. "Bearer <token>") before sending
+	normalized := normalizeAuth(authHeader)
+	body := map[string]string{"authorization": normalized}
 	b, err := json.Marshal(body)
 	if err != nil {
 		if s.failOpen {
@@ -132,4 +134,16 @@ func (s *sidecarClient) Authenticate(ctx context.Context, authHeader string) (au
 
 	// non-200 but payload indicates valid (rare): return payload
 	return res, nil
+}
+
+func normalizeAuth(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "bearer ") {
+		return strings.TrimSpace(s[7:])
+	}
+	return s
 }

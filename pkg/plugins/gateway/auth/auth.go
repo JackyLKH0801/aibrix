@@ -3,16 +3,21 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type ServerConfig struct {
-	Namespace  string
-	JWKSURL    string
+	Namespace string
+	JWKSURL   string
+	// FailClosed is kept for backward compatibility. If true, auth failures close the request path.
 	FailClosed bool
+	// FailOpen explicitly sets fail-open behavior when true. If unset, FailClosed is used to infer behavior.
+	FailOpen bool
 }
 
 type Server struct {
@@ -20,6 +25,26 @@ type Server struct {
 	jwks       *JWKSManager
 	httpServer *http.Server
 	cfg        ServerConfig
+}
+
+func (s *Server) failOpen() bool {
+	// Prefer explicit FailOpen when set; otherwise infer from FailClosed for backward compatibility.
+	if s.cfg.FailOpen {
+		return true
+	}
+	return !s.cfg.FailClosed
+}
+
+func normalizeAuth(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "bearer ") {
+		return strings.TrimSpace(s[7:])
+	}
+	return s
 }
 
 // NewServer constructs an auth Server which manages API keys in Redis and optionally JWKS.
@@ -57,12 +82,18 @@ func (s *Server) ValidateHTTP(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Authorization string `json:"authorization"`
 	}
-	if r.Header.Get("Content-Type") == "application/json" {
-		_ = json.NewDecoder(r.Body).Decode(&req)
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		if mediaType, _, err := mime.ParseMediaType(ct); err == nil && mediaType == "application/json" {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		} else if strings.HasPrefix(strings.ToLower(ct), "application/json") {
+			// fallback tolerant check for values like "application/json; charset=utf-8"
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
 	}
 	if req.Authorization == "" {
 		req.Authorization = r.Header.Get("Authorization")
 	}
+	req.Authorization = normalizeAuth(req.Authorization)
 	if req.Authorization == "" {
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(AuthResult{Valid: false, Error: "missing authorization"})
@@ -75,7 +106,7 @@ func (s *Server) ValidateHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(res)
 		return
 	}
-	if !s.cfg.FailClosed {
+	if s.failOpen() {
 		// fail-open
 		_ = json.NewEncoder(w).Encode(AuthResult{Valid: true, Error: "fail-open"})
 		return
