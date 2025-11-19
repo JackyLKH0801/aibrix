@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"net"
 	"net/http"
@@ -35,6 +36,7 @@ import (
 	"github.com/vllm-project/aibrix/pkg/constants"
 	"github.com/vllm-project/aibrix/pkg/plugins/gateway"
 	routing "github.com/vllm-project/aibrix/pkg/plugins/gateway/algorithms"
+	"github.com/vllm-project/aibrix/pkg/plugins/gateway/auth"
 	"github.com/vllm-project/aibrix/pkg/utils"
 	"google.golang.org/grpc/health"
 	healthPb "google.golang.org/grpc/health/grpc_health_v1"
@@ -105,6 +107,15 @@ func main() {
 
 	gatewayServer := gateway.NewServer(redisClient, k8sClient, gatewayK8sClient)
 
+	// Start the local auth sidecar server
+	failClosed := utils.LoadEnvBool("AIBRIX_AUTH_FAIL_CLOSED", false)
+	authCfg := auth.ServerConfig{Namespace: "aibrix", JWKSURL: "", FailClosed: failClosed}
+	authServer := auth.NewServer(redisClient, authCfg)
+	if err := authServer.Start("127.0.0.1:8081"); err != nil {
+		klog.Fatalf("failed to start auth server: %v", err)
+	}
+	klog.Info("auth server started on 127.0.0.1:8081")
+
 	if err := gatewayServer.StartMetricsServer(metricsAddr); err != nil {
 		klog.Fatalf("Failed to start metrics server: %v", err)
 	}
@@ -131,6 +142,8 @@ func main() {
 		sig := <-gracefulStop
 		klog.Warningf("signal received: %v, initiating graceful shutdown...", sig)
 		gatewayServer.Shutdown()
+		// stop auth server
+		_ = authServer.Shutdown(context.Background())
 		s.GracefulStop()
 		os.Exit(0)
 	}()
