@@ -549,7 +549,7 @@ func (r *ModelAdapterReconciler) reconcileReplicas(ctx context.Context, instance
 	}
 	instance.Status.Instances = validInstances
 
-	// Determine mode: nil = load on all, 1 = single pod
+	// Determine mode: nil = load on all, N = specific number of pods
 	loadOnAll := instance.Spec.Replicas == nil
 
 	if loadOnAll {
@@ -557,9 +557,13 @@ func (r *ModelAdapterReconciler) reconcileReplicas(ctx context.Context, instance
 		instance.Status.DesiredReplicas = instance.Status.Candidates
 		return r.reconcileLoadOnAllPods(ctx, instance, activePods, activeMap)
 	} else {
-		// Mode: Load on single pod (existing logic with scheduler)
-		instance.Status.DesiredReplicas = 1
-		return r.reconcileLoadOnSinglePod(ctx, instance, activePods, activeMap)
+		// Mode: Load on specific number of pods (existing logic with scheduler)
+		if instance.Spec.Replicas != nil {
+			instance.Status.DesiredReplicas = *instance.Spec.Replicas
+		} else {
+			instance.Status.DesiredReplicas = 1
+		}
+		return r.reconcileLoadOnSelectedPods(ctx, instance, activePods, activeMap)
 	}
 }
 
@@ -571,10 +575,10 @@ func (r *ModelAdapterReconciler) reconcileLoadOnAllPods(ctx context.Context, ins
 	return ctrl.Result{}, nil
 }
 
-// reconcileLoadOnSinglePod ensures the adapter is loaded on a single selected pod
-func (r *ModelAdapterReconciler) reconcileLoadOnSinglePod(ctx context.Context, instance *modelv1alpha1.ModelAdapter, activePods []corev1.Pod, activeMap map[string]corev1.Pod) (ctrl.Result, error) {
+// reconcileLoadOnSelectedPods ensures the adapter is loaded on selected pods
+func (r *ModelAdapterReconciler) reconcileLoadOnSelectedPods(ctx context.Context, instance *modelv1alpha1.ModelAdapter, activePods []corev1.Pod, activeMap map[string]corev1.Pod) (ctrl.Result, error) {
 	currentReplicas := int32(len(instance.Status.Instances))
-	desiredReplicas := int32(1)
+	desiredReplicas := instance.Status.DesiredReplicas
 
 	// Scale up if needed
 	if currentReplicas < desiredReplicas {
@@ -1281,6 +1285,17 @@ func (r *ModelAdapterReconciler) isPodHealthy(pod *corev1.Pod) bool {
 // tryLoadModelAdapterOnPod attempts to load an adapter on a pod with retry logic
 // Returns (success, shouldRetry, error)
 func (r *ModelAdapterReconciler) tryLoadModelAdapterOnPod(ctx context.Context, instance *modelv1alpha1.ModelAdapter, pod *corev1.Pod) (bool, bool, error) {
+	// Check tenant isolation
+	// If the pod is already stamped with a tenant ID, ensure it matches the adapter's tenant
+	if tenantID, ok := instance.Labels[constants.TenantLabelID]; ok {
+		if podTenantID, hasLabel := pod.Labels[constants.TenantLabelID]; hasLabel {
+			if podTenantID != tenantID {
+				klog.V(4).InfoS("Skipping pod due to tenant isolation", "pod", pod.Name, "podTenant", podTenantID, "adapterTenant", tenantID)
+				return false, false, nil // Not a failure, just skipping
+			}
+		}
+	}
+
 	// Get retry count from annotations
 	retryCount, lastRetryTime := r.getRetryInfo(instance, pod.Name)
 

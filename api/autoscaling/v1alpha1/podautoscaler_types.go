@@ -147,6 +147,9 @@ type MetricSource struct {
 	Port string `json:"port,omitempty"`
 	// TargetMetric identifies the specific metric to monitor (e.g., kv_cache_utilization).
 	TargetMetric string `json:"targetMetric"`
+	// TargetSubject identifies the specific subject to monitor (e.g., model name for multi-model serving).
+	// +optional
+	TargetSubject string `json:"targetSubject,omitempty"`
 	// TargetValue sets the desired threshold for the metric (e.g., 50 for 50% utilization).
 	TargetValue string `json:"targetValue"`
 }

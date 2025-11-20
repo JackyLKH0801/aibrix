@@ -150,6 +150,7 @@ func TestEngineMetricsFetcher_FetchTypedMetric(t *testing.T) {
 		metrics       string
 		engineType    string
 		metricName    string
+		subject       string
 		expectedValue float64
 		expectedError string
 		statusCode    int
@@ -159,6 +160,15 @@ func TestEngineMetricsFetcher_FetchTypedMetric(t *testing.T) {
 			metrics:       mockVllmMetrics,
 			engineType:    "vllm",
 			metricName:    "running_requests",
+			expectedValue: 2.0,
+			statusCode:    200,
+		},
+		{
+			name:          "FetchVllmRunningRequestsWithSubject",
+			metrics:       mockVllmMetrics,
+			engineType:    "vllm",
+			metricName:    "running_requests",
+			subject:       "meta-llama/Llama-2-7b-chat-hf",
 			expectedValue: 2.0,
 			statusCode:    200,
 		},
@@ -214,7 +224,7 @@ func TestEngineMetricsFetcher_FetchTypedMetric(t *testing.T) {
 			fetcher := NewEngineMetricsFetcher()
 
 			ctx := context.Background()
-			value, err := fetcher.FetchTypedMetric(ctx, endpoint, tt.engineType, "test-pod", tt.metricName)
+			value, err := fetcher.FetchTypedMetric(ctx, endpoint, tt.engineType, "test-pod", tt.metricName, tt.subject)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)
@@ -321,7 +331,7 @@ func TestEngineMetricsFetcher_RetryLogic(t *testing.T) {
 		fetcher := NewEngineMetricsFetcherWithConfig(config)
 
 		ctx := context.Background()
-		value, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests")
+		value, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests", "")
 
 		require.NoError(t, err)
 		assert.Equal(t, 2.0, value.GetSimpleValue())
@@ -344,7 +354,7 @@ func TestEngineMetricsFetcher_RetryLogic(t *testing.T) {
 		fetcher := NewEngineMetricsFetcherWithConfig(config)
 
 		ctx := context.Background()
-		_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests")
+		_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests", "")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "after 3 attempts")
@@ -389,7 +399,7 @@ func TestEngineMetricsFetcher_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests")
+	_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests", "")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "context deadline exceeded")
@@ -407,7 +417,7 @@ func TestEngineMetricsFetcher_InvalidMetrics(t *testing.T) {
 		fetcher := NewEngineMetricsFetcher()
 
 		ctx := context.Background()
-		_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests")
+		_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests", "")
 
 		require.Error(t, err)
 	})
@@ -422,7 +432,7 @@ func TestEngineMetricsFetcher_InvalidMetrics(t *testing.T) {
 		fetcher := NewEngineMetricsFetcher()
 
 		ctx := context.Background()
-		_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests")
+		_, err := fetcher.FetchTypedMetric(ctx, endpoint, "vllm", "test-pod", "running_requests", "")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "after 4 attempts")

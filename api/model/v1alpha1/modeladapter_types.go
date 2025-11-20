@@ -49,10 +49,9 @@ type ModelAdapterSpec struct {
 
 	// Replicas controls adapter distribution across pods:
 	// - nil (omitted): Load adapter on ALL matching pods (recommended)
-	// - 1: Load adapter on a single pod selected by the scheduler
-	// Only nil or 1 are supported. Other values will be rejected.
+	// - N: Load adapter on N pods selected by the scheduler
 	// +optional
-	// +kubebuilder:validation:Enum=1
+	// +kubebuilder:validation:Minimum=0
 	Replicas *int32 `json:"replicas,omitempty"`
 
 	// Tenant identifies the tenant that owns this model adapter (for multi-tenant isolation)

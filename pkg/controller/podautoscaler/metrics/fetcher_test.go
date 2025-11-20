@@ -146,6 +146,88 @@ func TestResourceMetricsFetcher_FetchPodMetrics(t *testing.T) {
 	assert.Equal(t, expectedMetricValue, actualMetricValue)
 }
 
+func TestRestMetricsFetcher_FetchPodMetricsWithSubject(t *testing.T) {
+	expectedMetricValue := 10.0
+	targetSubject := "lora-adapter-A"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify that the metric is fetched correctly
+		// In a real scenario, we would check if the fetcher is filtering by subject
+		// But here we are mocking the response, so we just return the metric
+		// The key is that the fetcher should not fail when subject is provided
+
+		// We can simulate subject filtering by checking if the metric name contains the subject
+		// or if the response contains the subject label.
+		// However, RestMetricsFetcher calls EngineMetricsFetcher, which does the filtering.
+		// Since we are mocking the engine endpoint, we can't easily verify the filtering logic here
+		// without mocking the EngineMetricsFetcher itself.
+		// But we can verify that the fetcher works end-to-end with a subject.
+
+		_, err := expfmt.MetricFamilyToText(w, &dto.MetricFamily{
+			Name: ptr.To("vllm_num_requests_running"),
+			Type: dto.MetricType_GAUGE.Enum(),
+			Metric: []*dto.Metric{
+				{
+					Label: []*dto.LabelPair{
+						{
+							Name:  ptr.To("model_name"),
+							Value: ptr.To(targetSubject),
+						},
+					},
+					Gauge: &dto.Gauge{
+						Value: ptr.To(expectedMetricValue),
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	ip, port := parseURL(server.URL)
+	require.NotEmpty(t, ip)
+	require.NotEmpty(t, port)
+
+	// Register the metric for testing
+	metrics.Metrics["num_requests_running"] = metrics.Metric{
+		MetricSource: metrics.PodRawMetrics,
+		MetricType:   metrics.MetricType{Raw: metrics.Gauge},
+		EngineMetricsNameMapping: map[string]string{
+			"vllm": "vllm_num_requests_running",
+		},
+		Description: "Number of running requests",
+		MetricScope: metrics.PodModelMetricScope,
+	}
+
+	fetcher := NewRestMetricsFetcherWithConfig(metrics.EngineMetricsFetcherConfig{
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "pod-1",
+			Labels: map[string]string{
+				constants.ModelLabelEngine: "vllm",
+			},
+		},
+		Status: corev1.PodStatus{
+			PodIP: ip,
+		},
+	}
+	source := autoscalingv1alpha1.MetricSource{
+		MetricSourceType: autoscalingv1alpha1.POD,
+		TargetMetric:     "num_requests_running",
+		Port:             port,
+		TargetSubject:    targetSubject,
+	}
+
+	actualMetricValue, err := fetcher.FetchPodMetrics(context.TODO(), pod, source)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedMetricValue, actualMetricValue)
+}
+
 func parseURL(rawURL string) (string, string) {
 	u, err := url.Parse(rawURL)
 	if err != nil {

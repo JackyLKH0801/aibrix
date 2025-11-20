@@ -88,7 +88,7 @@ type EngineMetricsResult struct {
 
 // FetchTypedMetric fetches a single typed metric from an engine endpoint
 // Note: if the client needs to fetch multiple metrics, it's better to use FetchAllTypedMetrics
-func (ef *EngineMetricsFetcher) FetchTypedMetric(ctx context.Context, endpoint, engineType, identifier, metricName string) (MetricValue, error) {
+func (ef *EngineMetricsFetcher) FetchTypedMetric(ctx context.Context, endpoint, engineType, identifier, metricName, subject string) (MetricValue, error) {
 	// Get metric definition from central registry
 	metricDef, exists := Metrics[metricName]
 	if !exists {
@@ -131,11 +131,32 @@ func (ef *EngineMetricsFetcher) FetchTypedMetric(ctx context.Context, endpoint, 
 		}
 
 		// Parse the specific metric we need
-		metricValue, err := ef.parseMetricFromFamily(allMetrics, rawMetricName, metricDef)
+		metricValues, err := ef.parseMetricsFromFamily(allMetrics, rawMetricName, metricDef)
 		if err != nil {
 			klog.V(4).InfoS("Failed to parse metric from engine endpoint",
 				"attempt", attempt+1, "identifier", identifier, "metric", metricName, "error", err)
 			continue
+		}
+
+		var metricValue MetricValue
+		if subject != "" {
+			if val, ok := metricValues[subject]; ok {
+				metricValue = val
+			} else {
+				// Subject not found
+				klog.V(4).InfoS("Metric subject not found", "subject", subject, "metric", metricName)
+				continue
+			}
+		} else {
+			// Fallback to first one or empty key
+			if val, ok := metricValues[""]; ok {
+				metricValue = val
+			} else {
+				for _, v := range metricValues {
+					metricValue = v
+					break
+				}
+			}
 		}
 
 		klog.V(4).InfoS("Successfully fetched typed metric from engine endpoint",
@@ -223,7 +244,7 @@ func (ef *EngineMetricsFetcher) FetchAllTypedMetrics(ctx context.Context, endpoi
 		}
 
 		// Parse the metric
-		metricValue, err := ef.parseMetricFromFamily(allMetrics, rawMetricName, metricDef)
+		metricValues, err := ef.parseMetricsFromFamily(allMetrics, rawMetricName, metricDef)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to parse metric %s: %v in endpoint %s", metricName, err, identifier))
 			continue
@@ -231,13 +252,21 @@ func (ef *EngineMetricsFetcher) FetchAllTypedMetrics(ctx context.Context, endpoi
 
 		// Store in appropriate scope
 		if metricDef.MetricScope == PodMetricScope {
-			result.Metrics[metricName] = metricValue
+			if val, ok := metricValues[""]; ok {
+				result.Metrics[metricName] = val
+			} else {
+				for _, v := range metricValues {
+					result.Metrics[metricName] = v
+					break
+				}
+			}
 		} else if metricDef.MetricScope == PodModelMetricScope {
-			// For model-scoped metrics, we need to extract model names from the raw metrics
-			modelNames := ef.extractModelNamesFromMetrics(allMetrics, rawMetricName)
-			for _, modelName := range modelNames {
+			for modelName, val := range metricValues {
+				if modelName == "" {
+					continue
+				}
 				key := fmt.Sprintf("%s/%s", modelName, metricName)
-				result.ModelMetrics[key] = metricValue
+				result.ModelMetrics[key] = val
 			}
 		}
 
@@ -277,8 +306,8 @@ func (ef *EngineMetricsFetcher) getAvailableMetricsForEngine(engineType string) 
 	return availableMetrics
 }
 
-// parseMetricFromFamily parses a specific metric from Prometheus metric families
-func (ef *EngineMetricsFetcher) parseMetricFromFamily(allMetrics map[string]*dto.MetricFamily, rawMetricName string, metric Metric) (MetricValue, error) {
+// parseMetricsFromFamily parses metrics from Prometheus metric families, keyed by model name
+func (ef *EngineMetricsFetcher) parseMetricsFromFamily(allMetrics map[string]*dto.MetricFamily, rawMetricName string, metric Metric) (map[string]MetricValue, error) {
 	metricFamily, exists := allMetrics[rawMetricName]
 	if !exists {
 		return nil, fmt.Errorf("raw metric %s not found", rawMetricName)
@@ -288,62 +317,66 @@ func (ef *EngineMetricsFetcher) parseMetricFromFamily(allMetrics map[string]*dto
 		return nil, fmt.Errorf("no metric instances found for %s", rawMetricName)
 	}
 
-	// Take the first metric instance (could be enhanced to handle multiple instances)
-	firstMetric := metricFamily.Metric[0]
+	results := make(map[string]MetricValue)
 
-	// Parse based on metric type
-	if metric.MetricType.IsRawMetric() {
-		switch metric.MetricType.Raw {
-		case Gauge, Counter:
-			value, err := GetCounterGaugeValue(firstMetric, metricFamily.GetType())
+	for _, m := range metricFamily.Metric {
+		// Extract model name if available
+		modelName := ""
+		if metric.MetricScope == PodModelMetricScope {
+			var err error
+			modelName, err = GetLabelValueForKey(m, "model_name")
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse counter/gauge metric %s: %v", rawMetricName, err)
+				modelName = ""
 			}
-			return &SimpleMetricValue{Value: value}, nil
-
-		case Histogram:
-			histValue, err := GetHistogramValue(firstMetric)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse histogram metric %s: %v", rawMetricName, err)
-			}
-			return histValue, nil
-
-		default:
-			return nil, fmt.Errorf("unsupported raw metric type: %v", metric.MetricType.Raw)
 		}
-	} else if metric.MetricType.Query == QueryLabel {
-		label, err := GetLabelValueForKey(firstMetric, metric.LabelKey)
+
+		// Parse based on metric type
+		var val MetricValue
+		var err error
+
+		if metric.MetricType.IsRawMetric() {
+			switch metric.MetricType.Raw {
+			case Gauge, Counter:
+				v, e := GetCounterGaugeValue(m, metricFamily.GetType())
+				if e != nil {
+					err = e
+				} else {
+					val = &SimpleMetricValue{Value: v}
+				}
+			case Histogram:
+				val, err = GetHistogramValue(m)
+			default:
+				err = fmt.Errorf("unsupported raw metric type: %v", metric.MetricType.Raw)
+			}
+		} else if metric.MetricType.Query == QueryLabel {
+			label, e := GetLabelValueForKey(m, metric.LabelKey)
+			if e != nil {
+				err = e
+			} else {
+				val = &LabelValueMetricValue{Value: label}
+			}
+		} else {
+			err = fmt.Errorf("unsupported metric type for raw parsing: %v", metric.MetricType)
+		}
+
 		if err != nil {
-			return nil, fmt.Errorf("failed to extract label %s for metric %s: %v", metric.LabelKey, rawMetricName, err)
+			continue
 		}
-		return &LabelValueMetricValue{Value: label}, nil
-	}
 
-	return nil, fmt.Errorf("unsupported metric type for raw parsing: %v", metric.MetricType)
-}
-
-// extractModelNamesFromMetrics extracts model names from metric labels
-func (ef *EngineMetricsFetcher) extractModelNamesFromMetrics(allMetrics map[string]*dto.MetricFamily, rawMetricName string) []string {
-	metricFamily, exists := allMetrics[rawMetricName]
-	if !exists {
-		return []string{}
-	}
-
-	modelNames := make(map[string]struct{}) // Use map to deduplicate
-	for _, familyMetric := range metricFamily.Metric {
-		// TODO: confirm whether vLLM/SGLang uses the same label_key.
-		if modelName, err := GetLabelValueForKey(familyMetric, "model_name"); err == nil && modelName != "" {
-			modelNames[modelName] = struct{}{}
+		if metric.MetricScope == PodMetricScope {
+			results[""] = val
+		} else {
+			results[modelName] = val
 		}
 	}
 
-	// Convert to slice
-	result := make([]string, 0, len(modelNames))
-	for modelName := range modelNames {
-		result = append(result, modelName)
+	if len(results) == 0 {
+		return nil, fmt.Errorf("failed to parse any metrics for %s", rawMetricName)
 	}
-	return result
+
+	return results, nil
 }
+
 
 // fetchAllMetricsFromURL performs a single HTTP request and parses all Prometheus metrics
 func (ef *EngineMetricsFetcher) fetchAllMetricsFromURL(ctx context.Context, url string) (map[string]*dto.MetricFamily, error) {
