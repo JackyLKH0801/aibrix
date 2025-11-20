@@ -44,11 +44,15 @@ import (
 var (
 	grpcAddr    string
 	metricsAddr string
+	cacheTTL    string
+	routingMode string
 )
 
 func main() {
 	flag.StringVar(&grpcAddr, "grpc-bind-address", ":50052", "The address the gRPC server binds to.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&cacheTTL, "cache-ttl", "1m", "Cache TTL duration")
+	flag.StringVar(&routingMode, "routing-mode", "label-based", "Routing mode: hierarchical or label-based")
 	klog.InitFlags(flag.CommandLine)
 	defer klog.Flush()
 	flag.Parse()
@@ -103,7 +107,10 @@ func main() {
 		klog.Fatalf("Error on creating gateway k8s client: %v", err)
 	}
 
-	gatewayServer := gateway.NewServer(redisClient, k8sClient, gatewayK8sClient)
+	gatewayServer := gateway.NewServer(redisClient, k8sClient, gatewayK8sClient, gateway.GatewayConfig{
+		CacheTTL:    cacheTTL,
+		RoutingMode: routingMode,
+	})
 
 	if err := gatewayServer.StartMetricsServer(metricsAddr); err != nil {
 		klog.Fatalf("Failed to start metrics server: %v", err)

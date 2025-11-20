@@ -17,6 +17,11 @@ var (
 		Help: "Total requests rejected due to conflicting tenant metadata",
 	}, []string{"field"})
 
+	requestTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "aibrix_gateway_requests_total",
+		Help: "Total requests processed by the gateway",
+	}, []string{"tenant_id", "model_id"})
+
 	metricsOnce sync.Once
 )
 
@@ -24,6 +29,7 @@ func registerTenantMetrics() {
 	metricsOnce.Do(func() {
 		prometheus.MustRegister(legacyTenantFallbacks)
 		prometheus.MustRegister(tenantConflictTotal)
+		prometheus.MustRegister(requestTotal)
 	})
 }
 
@@ -35,4 +41,9 @@ func recordLegacyTenantFallback() {
 func recordTenantConflict(field string) {
 	registerTenantMetrics()
 	tenantConflictTotal.WithLabelValues(field).Inc()
+}
+
+func recordRequest(tenantID, modelID string) {
+	registerTenantMetrics()
+	requestTotal.WithLabelValues(tenantID, modelID).Inc()
 }

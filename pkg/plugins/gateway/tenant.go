@@ -53,7 +53,7 @@ type TenantMetadata struct {
 
 // extractTenantMetadata extracts tenant information from request headers and JWT claims
 // Headers take precedence over JWT claims unless policy forbids it
-func extractTenantMetadata(headers []*configPb.HeaderValue, authHeader string) (*TenantMetadata, error) {
+func extractTenantMetadata(headers []*configPb.HeaderValue, authHeader string, verifiedClaims map[string]interface{}) (*TenantMetadata, error) {
 	metadata := &TenantMetadata{}
 
 	// Extract from headers first (higher precedence)
@@ -74,23 +74,30 @@ func extractTenantMetadata(headers []*configPb.HeaderValue, authHeader string) (
 	}
 
 	// Extract from JWT claims if headers not present
-	if authHeader != "" {
-		claims, err := extractJWTClaims(authHeader)
-		if err == nil {
-			if tenantID, ok := claims[jwtClaimTenantID].(string); ok && tenantID != "" {
-				metadata.ClaimTenantID = tenantID
-				if metadata.TenantID == "" {
-					metadata.TenantID = tenantID
-				}
-			}
-			if deploymentID, ok := claims[jwtClaimDeploymentID].(string); ok && deploymentID != "" {
-				metadata.ClaimDeploymentID = deploymentID
-				if metadata.DeploymentID == "" {
-					metadata.DeploymentID = deploymentID
-				}
-			}
-		} else {
+	var claims map[string]interface{}
+	var err error
+
+	if verifiedClaims != nil {
+		claims = verifiedClaims
+	} else if authHeader != "" {
+		claims, err = extractJWTClaims(authHeader)
+		if err != nil {
 			klog.V(4).InfoS("Failed to extract JWT claims", "error", err)
+		}
+	}
+
+	if claims != nil {
+		if tenantID, ok := claims[jwtClaimTenantID].(string); ok && tenantID != "" {
+			metadata.ClaimTenantID = tenantID
+			if metadata.TenantID == "" {
+				metadata.TenantID = tenantID
+			}
+		}
+		if deploymentID, ok := claims[jwtClaimDeploymentID].(string); ok && deploymentID != "" {
+			metadata.ClaimDeploymentID = deploymentID
+			if metadata.DeploymentID == "" {
+				metadata.DeploymentID = deploymentID
+			}
 		}
 	}
 

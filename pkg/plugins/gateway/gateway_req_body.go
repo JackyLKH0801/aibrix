@@ -47,6 +47,9 @@ func (s *Server) HandleRequestBody(ctx context.Context, requestID string, req *e
 	routingCtx.Message = message
 	routingCtx.ReqBody = body.RequestBody.GetBody()
 
+	// Record request metric
+	recordRequest(routingCtx.TenantID, model)
+
 	// early reject the request if model doesn't exist.
 	if !s.cache.HasModel(model) {
 		klog.ErrorS(nil, "model doesn't exist in cache, probably wrong model name", "requestID", requestID, "model", model)

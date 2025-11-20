@@ -311,6 +311,7 @@ func (c *Store) addPodAndModelMappingLocked(metaPod *Pod, modelName string) {
 		c.bufferModel = &Model{
 			Pods:            utils.NewRegistryWithArrayProvider(func(arr []*v1.Pod) *utils.PodArray { return &utils.PodArray{Pods: arr} }),
 			OutputPredictor: NewSimpleOutputPredictor(maxInputTokens, maxOutputTokens, movingWindow),
+			TenantPods:      make(map[string]*utils.CustomizedRegistry[*v1.Pod, *utils.PodArray]),
 		}
 	}
 	metaModel, loaded := c.metaModels.LoadOrStore(modelName, c.bufferModel)
@@ -330,7 +331,22 @@ func (c *Store) addPodAndModelMappingLocked(metaPod *Pod, modelName string) {
 	podKey := utils.GeneratePodKey(metaPod.Namespace, metaPod.Name)
 	metaModel.Pods.Store(podKey, metaPod.Pod)
 
-	klog.V(4).InfoS("Pod added to model", "model", modelName, "pod", podKey, "pods", metaModel.Pods.Len())
+	// Add to TenantPods
+	tenantID := "default"
+	if val, ok := metaPod.Pod.Labels["tenant.aibrix.ai/id"]; ok {
+		tenantID = val
+	}
+
+	if metaModel.TenantPods == nil {
+		metaModel.TenantPods = make(map[string]*utils.CustomizedRegistry[*v1.Pod, *utils.PodArray])
+	}
+
+	if _, ok := metaModel.TenantPods[tenantID]; !ok {
+		metaModel.TenantPods[tenantID] = utils.NewRegistryWithArrayProvider(func(arr []*v1.Pod) *utils.PodArray { return &utils.PodArray{Pods: arr} })
+	}
+	metaModel.TenantPods[tenantID].Store(podKey, metaPod.Pod)
+
+	klog.V(4).InfoS("Pod added to model", "model", modelName, "pod", podKey, "pods", metaModel.Pods.Len(), "tenant", tenantID)
 }
 
 func (c *Store) deletePodLocked(podName, podNamespace string) *Pod {
@@ -354,6 +370,14 @@ func (c *Store) deletePodAndModelMappingLocked(podName, namespace, modelName str
 	if ignoreMapping >= 0 {
 		if meta, ok := c.metaModels.Load(modelName); ok {
 			meta.Pods.Delete(podKey)
+
+			// Remove from TenantPods
+			if meta.TenantPods != nil {
+				for _, registry := range meta.TenantPods {
+					registry.Delete(podKey)
+				}
+			}
+
 			klog.V(4).InfoS("Pod removed from model", "model", modelName, "pod", podKey, "pods", meta.Pods.Len())
 
 			if meta.Pods.Len() == 0 {

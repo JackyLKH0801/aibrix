@@ -82,26 +82,17 @@ func (c *Store) ListPodsByModel(modelName string, tenantID string) (types.PodLis
 		return nil, fmt.Errorf("model does not exist in the cache: %s", modelName)
 	}
 
-	// Filter pods by tenant label
-	// In future iterations, we'll use composite keys (tenant::model::deploymentRev)
-	// For now, filter by tenant label on pods
-	allPods := meta.Pods.Array()
+	// Backward compatibility: return all pods for default tenant
 	if tenantID == "default" {
-		// Backward compatibility: return all pods for default tenant
-		return allPods, nil
+		return meta.Pods.Array(), nil
 	}
 
-	// Filter pods matching the tenant ID
-	var filteredPods []*v1.Pod
-	for _, pod := range allPods.All() {
-		if pod.Labels != nil {
-			if podTenant, exists := pod.Labels["tenant.aibrix.ai/id"]; exists && podTenant == tenantID {
-				filteredPods = append(filteredPods, pod)
-			}
-		}
+	// Use TenantPods for O(1) lookup
+	if registry, ok := meta.TenantPods[tenantID]; ok {
+		return registry.Array(), nil
 	}
 
-	return &utils.PodArray{Pods: filteredPods}, nil
+	return &utils.PodArray{Pods: []*v1.Pod{}}, nil
 }
 
 // ListModels returns all cached model names
@@ -360,3 +351,5 @@ func (c *Store) GetRouter(ctx *types.RoutingContext) (types.Router, error) {
 		return model.QueueRouter, nil
 	}
 }
+
+

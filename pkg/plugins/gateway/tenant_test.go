@@ -70,7 +70,7 @@ func TestExtractTenantMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := extractTenantMetadata(tt.headers, tt.authHeader)
+			result, err := extractTenantMetadata(tt.headers, tt.authHeader, nil)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

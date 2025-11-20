@@ -37,5 +37,9 @@ type Model struct {
 	// QueueRouter maintains a local request queue, enabling flexible request reordering.
 	QueueRouter types.QueueRouter
 
+	// TenantPods maps tenant ID to a registry of pods for that tenant.
+	// This enables O(1) lookup for tenant-specific pods.
+	TenantPods map[string]*utils.CustomizedRegistry[*v1.Pod, *utils.PodArray]
+
 	pendingRequests int32
 }

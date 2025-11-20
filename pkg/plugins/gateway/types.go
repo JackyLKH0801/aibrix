@@ -71,6 +71,14 @@ const (
 	DefaultTenant = "default"
 )
 
+// GatewayConfig holds configuration for the gateway server
+type GatewayConfig struct {
+	CacheTTL      string // Duration string, e.g. "1m"
+	RoutingMode   string // "hierarchical" or "label-based"
+	AuthSecret    string // Default JWT secret
+	EnforceAuth   bool   // Whether to enforce authentication
+}
+
 var (
 	ErrorUnknownResponse = errors.New("unknown response")
 	requestBuffers       sync.Map // Thread-safe map to track buffers per request

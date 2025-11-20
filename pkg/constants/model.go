@@ -39,4 +39,8 @@ const (
 	// ModelLabelAdapterEnabled is the label for enabling or disabling adapter dynamic registration
 	// Example: "adapter.model.aibrix.ai/enabled": "true"
 	ModelLabelAdapterEnabled = "adapter.model.aibrix.ai/enabled"
+
+	// TenantLabelID is the label for identifying the tenant ID
+	// Example: "tenant.aibrix.ai/id": "tenant-1"
+	TenantLabelID = "tenant.aibrix.ai/id"
 )

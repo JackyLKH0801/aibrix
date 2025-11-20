@@ -18,6 +18,7 @@ package modeladapter
 
 import (
 	modelv1alpha1 "github.com/vllm-project/aibrix/api/model/v1alpha1"
+	"github.com/vllm-project/aibrix/pkg/constants"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,6 +29,11 @@ import (
 func buildModelAdapterEndpointSlice(instance *modelv1alpha1.ModelAdapter, pods []corev1.Pod) *discoveryv1.EndpointSlice {
 	serviceLabels := map[string]string{
 		"kubernetes.io/service-name": instance.Name,
+	}
+
+	// Propagate tenant label if present
+	if tenantID, ok := instance.Labels[constants.TenantLabelID]; ok {
+		serviceLabels[constants.TenantLabelID] = tenantID
 	}
 
 	addresses := make([]discoveryv1.Endpoint, 0, len(pods))
@@ -67,6 +73,11 @@ func buildModelAdapterService(instance *modelv1alpha1.ModelAdapter) *corev1.Serv
 	}
 	if instance.Spec.BaseModel != nil {
 		labels[ModelIdentifierKey] = *instance.Spec.BaseModel
+	}
+
+	// Propagate tenant label if present
+	if tenantID, ok := instance.Labels[constants.TenantLabelID]; ok {
+		labels[constants.TenantLabelID] = tenantID
 	}
 
 	ports := []corev1.ServicePort{

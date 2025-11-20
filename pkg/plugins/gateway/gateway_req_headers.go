@@ -62,8 +62,34 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, requestID string, req
 		}
 	}
 
+	// Auth Validation
+	var verifiedClaims map[string]interface{}
+	if authHeader != "" {
+		claims, err := s.ValidateToken(authHeader)
+		if err != nil {
+			if s.authConfig.EnforceAuth {
+				klog.ErrorS(err, "token validation failed", "requestID", requestID)
+				return generateErrorResponse(
+					envoyTypePb.StatusCode_Unauthorized,
+					[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+						Key: HeaderErrorRequestBodyProcessing, RawValue: []byte("unauthorized"),
+					}}}, "unauthorized", "", ""), utils.User{}, rpm, routingCtx
+			}
+			klog.Warningf("Token validation failed but auth not enforced: %v", err)
+		} else {
+			verifiedClaims = claims
+		}
+	} else if s.authConfig.EnforceAuth {
+		klog.ErrorS(nil, "missing authorization header", "requestID", requestID)
+		return generateErrorResponse(
+			envoyTypePb.StatusCode_Unauthorized,
+			[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+				Key: HeaderErrorRequestBodyProcessing, RawValue: []byte("unauthorized"),
+			}}}, "unauthorized", "", ""), utils.User{}, rpm, routingCtx
+	}
+
 	// Extract tenant metadata from headers and JWT claims
-	tenantMetadata, err := extractTenantMetadata(h.RequestHeaders.Headers.Headers, authHeader)
+	tenantMetadata, err := extractTenantMetadata(h.RequestHeaders.Headers.Headers, authHeader, verifiedClaims)
 	if err != nil {
 		klog.ErrorS(err, "failed to extract tenant metadata", "requestID", requestID)
 		return generateErrorResponse(
@@ -115,9 +141,9 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, requestID string, req
 				err.Error(), "", ""), utils.User{}, rpm, routingCtx
 		}
 
-		rpm, errRes, err = s.checkLimits(ctx, user)
+		rpm, errRes, err = s.checkLimits(ctx, user, tenantMetadata.TenantID)
 		if errRes != nil {
-			klog.ErrorS(err, "error on checking limits", "requestID", requestID, "username", username)
+			klog.ErrorS(err, "error on checking limits", "requestID", requestID, "username", username, "tenantID", tenantMetadata.TenantID)
 			return errRes, utils.User{}, rpm, routingCtx
 		}
 	}

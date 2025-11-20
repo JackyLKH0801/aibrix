@@ -21,6 +21,7 @@ import (
 
 	rayclusterv1 "github.com/ray-project/kuberay/ray-operator/apis/ray/v1"
 	orchestrationv1alpha1 "github.com/vllm-project/aibrix/api/orchestration/v1alpha1"
+	"github.com/vllm-project/aibrix/pkg/constants"
 	rayclusterutil "github.com/vllm-project/aibrix/pkg/utils"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -90,6 +91,25 @@ func constructRayCluster(replicaset *orchestrationv1alpha1.RayClusterReplicaSet)
 			},
 		},
 		Spec: replicaset.Spec.Template.Spec,
+	}
+
+	// Propagate tenant label to HeadGroupSpec and WorkerGroupSpecs
+	// This ensures that the pods created by the RayCluster have the tenant label
+	// The tenant label is expected to be in the RayClusterReplicaSet's template labels
+	if tenantID, ok := replicaset.Spec.Template.Labels[constants.TenantLabelID]; ok {
+		// Propagate to HeadGroupSpec
+		if cluster.Spec.HeadGroupSpec.Template.ObjectMeta.Labels == nil {
+			cluster.Spec.HeadGroupSpec.Template.ObjectMeta.Labels = make(map[string]string)
+		}
+		cluster.Spec.HeadGroupSpec.Template.ObjectMeta.Labels[constants.TenantLabelID] = tenantID
+
+		// Propagate to WorkerGroupSpecs
+		for i := range cluster.Spec.WorkerGroupSpecs {
+			if cluster.Spec.WorkerGroupSpecs[i].Template.ObjectMeta.Labels == nil {
+				cluster.Spec.WorkerGroupSpecs[i].Template.ObjectMeta.Labels = make(map[string]string)
+			}
+			cluster.Spec.WorkerGroupSpecs[i].Template.ObjectMeta.Labels[constants.TenantLabelID] = tenantID
+		}
 	}
 
 	return cluster

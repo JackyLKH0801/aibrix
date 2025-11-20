@@ -31,7 +31,10 @@ This document captures the engineering to-do list for implementing RFC #1101, en
 
 ## 2. Extend Gateway Routing & Authentication Logic
 - Introduce tenant-aware auth middleware in `gateway.go` (OAuth/JWT validation, key management, per-tenant rate/SLA policies).
+    OAuth/JWT validation -> auth.go & Updated gateway_req_headers.go to validate JWT token
+    rate limit -> gateway_ratelimit.go
 - Update `HandleRequestBody` and `selectTargetPod` to compute composite keys, hit a tenant→model cache layer, and emit tenant context in logs/metrics.
+    compute compoiste key -> gateway_req_body.go
 - Ensure Envoy receives tenant-scoped `x-target-pod` headers and honor routing failures with clear 4xx/5xx semantics.
 - Add configuration knobs for cache TTLs, eviction strategy, and hierarchical vs label-based routing modes.
 
@@ -39,6 +42,7 @@ This document captures the engineering to-do list for implementing RFC #1101, en
 - Modify the model adapter/controller to stamp pods with tenant + model labels/annotations and enforce namespace/quotas for isolation.
 - Generate tenant-specific `HTTPRoute` objects that match composite headers (`X-Tenant-ID`, `X-Model-Name`) and avoid cross-tenant routing collisions.
 - Teach informer caches to index pods by composite key so the gateway lookup remains O(1) even as tenants scale.
+    --> cache_impl.go make use of TenantPods for O(1) lookup
 
 ## 4. Add Isolation-Aware Autoscaling & LoRA Handling
 - Feed autoscalers with tenant-scoped metrics (QPS, p99 latency, GPU/KV cache usage) and scale pods per tenant without affecting others.

@@ -26,7 +26,7 @@ import (
 	"github.com/vllm-project/aibrix/pkg/utils"
 )
 
-func (s *Server) checkLimits(ctx context.Context, user utils.User) (int64, *extProcPb.ProcessingResponse, error) {
+func (s *Server) checkLimits(ctx context.Context, user utils.User, tenantID string) (int64, *extProcPb.ProcessingResponse, error) {
 	if user.Rpm == 0 {
 		user.Rpm = int64(DefaultRPM)
 	}
@@ -34,6 +34,7 @@ func (s *Server) checkLimits(ctx context.Context, user utils.User) (int64, *extP
 		user.Tpm = user.Rpm * int64(DefaultTPMMultiplier)
 	}
 
+	// Check User Limits
 	code, err := s.checkRPM(ctx, user.Name, user.Rpm)
 	if err != nil {
 		errorCode := ""
@@ -70,6 +71,53 @@ func (s *Server) checkLimits(ctx context.Context, user utils.User) (int64, *extP
 				Key: HeaderErrorTPMExceeded, RawValue: []byte("true"),
 			}}},
 			err.Error(), errorCode, ""), err
+	}
+
+	// Check Tenant Limits
+	if tenantID != "" && tenantID != "default" {
+		// TODO: Fetch tenant specific limits from configuration or Redis
+		// For now, we use the default limits for tenants as well
+		tenantRpm := int64(DefaultRPM)
+		tenantTpm := int64(DefaultRPM * DefaultTPMMultiplier)
+		tenantKey := "tenant:" + tenantID
+
+		code, err := s.checkRPM(ctx, tenantKey, tenantRpm)
+		if err != nil {
+			errorCode := ""
+			if code == envoyTypePb.StatusCode_TooManyRequests {
+				errorCode = ErrorCodeRateLimitExceeded
+			}
+			return 0, generateErrorResponse(
+				code,
+				[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+					Key: HeaderErrorRPMExceeded, RawValue: []byte("true"),
+				}}},
+				fmt.Sprintf("tenant %s: %v", tenantID, err), errorCode, ""), err
+		}
+
+		_, code, err = s.incrRPM(ctx, tenantKey)
+		if err != nil {
+			return 0, generateErrorResponse(
+				code,
+				[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+					Key: HeaderErrorIncrRPM, RawValue: []byte("true"),
+				}}},
+				err.Error(), "", ""), err
+		}
+
+		code, err = s.checkTPM(ctx, tenantKey, tenantTpm)
+		if err != nil {
+			errorCode := ""
+			if code == envoyTypePb.StatusCode_TooManyRequests {
+				errorCode = ErrorCodeRateLimitExceeded
+			}
+			return 0, generateErrorResponse(
+				code,
+				[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
+					Key: HeaderErrorTPMExceeded, RawValue: []byte("true"),
+				}}},
+				fmt.Sprintf("tenant %s: %v", tenantID, err), errorCode, ""), err
+		}
 	}
 
 	return rpm, nil, nil

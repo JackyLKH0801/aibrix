@@ -48,6 +48,8 @@ const (
 	modelHeaderIdentifier = "model"
 	modelIdentifier       = constants.ModelLabelName
 	modelPortIdentifier   = constants.ModelLabelPort
+	tenantIdentifier      = constants.TenantLabelID
+	tenantHeaderIdentifier = "x-tenant-id"
 	// TODO (varun): parameterize it or dynamically resolve it
 	aibrixEnvoyGateway          = "aibrix-eg"
 	aibrixEnvoyGatewayNamespace = "aibrix-system"
@@ -196,6 +198,19 @@ func (m *ModelRouter) createHTTPRoute(namespace string, labels map[string]string
 		Value: modelName,
 	}
 
+	// Add tenant header match if tenant label is present
+	var headerMatches []gatewayv1.HTTPHeaderMatch
+	headerMatches = append(headerMatches, modelHeaderMatch)
+
+	if tenantID, ok := labels[tenantIdentifier]; ok {
+		tenantHeaderMatch := gatewayv1.HTTPHeaderMatch{
+			Type:  ptr.To(gatewayv1.HeaderMatchExact),
+			Name:  tenantHeaderIdentifier,
+			Value: tenantID,
+		}
+		headerMatches = append(headerMatches, tenantHeaderMatch)
+	}
+
 	httpRoute := gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-router", modelName),
@@ -218,45 +233,35 @@ func (m *ModelRouter) createHTTPRoute(namespace string, labels map[string]string
 								Type:  ptr.To(gatewayv1.PathMatchPathPrefix),
 								Value: ptr.To("/v1/completions"),
 							},
-							Headers: []gatewayv1.HTTPHeaderMatch{
-								modelHeaderMatch,
-							},
+							Headers: headerMatches,
 						},
 						{
 							Path: &gatewayv1.HTTPPathMatch{
 								Type:  ptr.To(gatewayv1.PathMatchPathPrefix),
 								Value: ptr.To("/v1/chat/completions"),
 							},
-							Headers: []gatewayv1.HTTPHeaderMatch{
-								modelHeaderMatch,
-							},
+							Headers: headerMatches,
 						},
 						{
 							Path: &gatewayv1.HTTPPathMatch{
 								Type:  ptr.To(gatewayv1.PathMatchPathPrefix),
 								Value: ptr.To("/v1/embeddings"),
 							},
-							Headers: []gatewayv1.HTTPHeaderMatch{
-								modelHeaderMatch,
-							},
+							Headers: headerMatches,
 						},
 						{
 							Path: &gatewayv1.HTTPPathMatch{
 								Type:  ptr.To(gatewayv1.PathMatchPathPrefix),
 								Value: ptr.To("/generate"),
 							},
-							Headers: []gatewayv1.HTTPHeaderMatch{
-								modelHeaderMatch,
-							},
+							Headers: headerMatches,
 						},
 						{
 							Path: &gatewayv1.HTTPPathMatch{
 								Type:  ptr.To(gatewayv1.PathMatchPathPrefix),
 								Value: ptr.To("/generatevideo"),
 							},
-							Headers: []gatewayv1.HTTPHeaderMatch{
-								modelHeaderMatch,
-							},
+							Headers: headerMatches,
 						},
 					},
 					BackendRefs: []gatewayv1.HTTPBackendRef{

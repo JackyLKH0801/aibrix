@@ -56,14 +56,22 @@ type Server struct {
 	requestCountTracker map[string]int
 	cache               cache.Cache
 	metricsServer       *metrics.Server
+	config              GatewayConfig
+	authConfig          AuthConfig
 }
 
-func NewServer(redisClient *redis.Client, client kubernetes.Interface, gatewayClient gatewayapi.Interface) *Server {
+func NewServer(redisClient *redis.Client, client kubernetes.Interface, gatewayClient gatewayapi.Interface, config GatewayConfig) *Server {
 	c, err := cache.Get()
 	if err != nil {
 		panic(err)
 	}
-	r := ratelimiter.NewRedisAccountRateLimiter("aibrix", redisClient, 1*time.Minute)
+
+	ttl, err := time.ParseDuration(config.CacheTTL)
+	if err != nil {
+		klog.Warningf("Invalid cache TTL %s, using default 1m", config.CacheTTL)
+		ttl = 1 * time.Minute
+	}
+	r := ratelimiter.NewRedisAccountRateLimiter("aibrix", redisClient, ttl)
 
 	// Initialize the routers
 	routing.Init()
@@ -76,6 +84,12 @@ func NewServer(redisClient *redis.Client, client kubernetes.Interface, gatewayCl
 		requestCountTracker: map[string]int{},
 		cache:               c,
 		metricsServer:       nil,
+		config:              config,
+		authConfig: AuthConfig{
+			DefaultSecret: config.AuthSecret,
+			EnforceAuth:   config.EnforceAuth,
+			TenantKeys:    make(map[string]string), // Initialize empty map for now
+		},
 	}
 }
 
