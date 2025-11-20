@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 func TestBuildModelAdapterEndpointSlice(t *testing.T) {
@@ -102,4 +103,54 @@ func TestBuildModelAdapterService(t *testing.T) {
 	// Check owner references
 	assert.Len(t, service.OwnerReferences, 1)
 	assert.Equal(t, instance.Name, service.OwnerReferences[0].Name)
+}
+
+func TestBuildHTTPRoute(t *testing.T) {
+	// Mock input for ModelAdapter with Tenant ID
+	instance := &modelv1alpha1.ModelAdapter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-adapter",
+			Namespace: "default",
+			Labels: map[string]string{
+				constants.TenantLabelID: "tenant-123",
+			},
+		},
+		Spec: modelv1alpha1.ModelAdapterSpec{
+			BaseModel: ptr.To[string]("test-model"),
+		},
+	}
+
+	// Call the function to test
+	route := buildHTTPRoute(instance)
+
+	// Check HTTPRoute metadata
+	assert.Equal(t, "test-adapter", route.Name)
+	assert.Equal(t, "default", route.Namespace)
+	assert.Equal(t, "tenant-123", route.Labels[constants.TenantLabelID])
+
+	// Check ParentRefs
+	assert.Len(t, route.Spec.ParentRefs, 1)
+	assert.Equal(t, "aibrix-gateway", string(route.Spec.ParentRefs[0].Name))
+
+	// Check Rules
+	assert.Len(t, route.Spec.Rules, 1)
+	rule := route.Spec.Rules[0]
+
+	// Check Matches
+	assert.Len(t, rule.Matches, 1)
+	match := rule.Matches[0]
+	assert.Len(t, match.Headers, 2)
+
+	// Check Model ID Header
+	assert.Equal(t, gatewayv1.HTTPHeaderName("x-aibrix-model-id"), match.Headers[0].Name)
+	assert.Equal(t, "test-adapter", match.Headers[0].Value)
+
+	// Check Tenant ID Header
+	assert.Equal(t, gatewayv1.HTTPHeaderName("x-aibrix-tenant-id"), match.Headers[1].Name)
+	assert.Equal(t, "tenant-123", match.Headers[1].Value)
+
+	// Check BackendRefs
+	assert.Len(t, rule.BackendRefs, 1)
+	assert.Equal(t, "test-adapter", string(rule.BackendRefs[0].Name))
+	assert.Equal(t, int32(8000), int32(*rule.BackendRefs[0].Port))
 }

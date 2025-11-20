@@ -40,7 +40,9 @@ This document captures the engineering to-do list for implementing RFC #1101, en
 
 ## 3. Update Controllers, Pod Labeling & HTTPRoutes
 - Modify the model adapter/controller to stamp pods with tenant + model labels/annotations and enforce namespace/quotas for isolation.
+    --> Modify moedeladapter_controller.go
 - Generate tenant-specific `HTTPRoute` objects that match composite headers (`X-Tenant-ID`, `X-Model-Name`) and avoid cross-tenant routing collisions.
+    --> implement buildHTTPRoute in resources.go
 - Teach informer caches to index pods by composite key so the gateway lookup remains O(1) even as tenants scale.
     --> cache_impl.go make use of TenantPods for O(1) lookup
 

@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 func buildModelAdapterEndpointSlice(instance *modelv1alpha1.ModelAdapter, pods []corev1.Pod) *discoveryv1.EndpointSlice {
@@ -108,6 +109,94 @@ func buildModelAdapterService(instance *modelv1alpha1.ModelAdapter) *corev1.Serv
 			ClusterIP:                corev1.ClusterIPNone,
 			PublishNotReadyAddresses: true,
 			Ports:                    ports,
+		},
+	}
+}
+
+func buildHTTPRoute(instance *modelv1alpha1.ModelAdapter) *gatewayv1.HTTPRoute {
+	labels := map[string]string{
+		ModelAdapterKey: instance.Name,
+	}
+	if instance.Spec.BaseModel != nil {
+		labels[ModelIdentifierKey] = *instance.Spec.BaseModel
+	}
+
+	// Propagate tenant label if present
+	if tenantID, ok := instance.Labels[constants.TenantLabelID]; ok {
+		labels[constants.TenantLabelID] = tenantID
+	}
+
+	// Define ParentRef (Gateway)
+	// TODO: Make this configurable via flags or config
+	gatewayNamespace := gatewayv1.Namespace("aibrix-system")
+	gatewayName := gatewayv1.ObjectName("aibrix-gateway")
+	parentRefs := []gatewayv1.ParentReference{
+		{
+			Group:     ptr.To(gatewayv1.Group("gateway.networking.k8s.io")),
+			Kind:      ptr.To(gatewayv1.Kind("Gateway")),
+			Namespace: &gatewayNamespace,
+			Name:      gatewayName,
+		},
+	}
+
+	// Define Match
+	matches := []gatewayv1.HTTPRouteMatch{}
+
+	// Match on Model ID header
+	// The client is expected to send x-aibrix-model-id header to route to the specific adapter
+	modelHeaderName := gatewayv1.HTTPHeaderName("x-aibrix-model-id")
+	modelHeaderValue := instance.Name
+	matches = append(matches, gatewayv1.HTTPRouteMatch{
+		Headers: []gatewayv1.HTTPHeaderMatch{
+			{
+				Name:  modelHeaderName,
+				Value: modelHeaderValue,
+				Type:  ptr.To(gatewayv1.HeaderMatchExact),
+			},
+		},
+	})
+
+	// If tenant label exists, add tenant header match
+	if tenantID, ok := instance.Labels[constants.TenantLabelID]; ok {
+		tenantHeaderName := gatewayv1.HTTPHeaderName("x-aibrix-tenant-id")
+		matches[0].Headers = append(matches[0].Headers, gatewayv1.HTTPHeaderMatch{
+			Name:  tenantHeaderName,
+			Value: tenantID,
+			Type:  ptr.To(gatewayv1.HeaderMatchExact),
+		})
+	}
+
+	// BackendRef
+	backendRefs := []gatewayv1.HTTPBackendRef{
+		{
+			BackendRef: gatewayv1.BackendRef{
+				BackendObjectReference: gatewayv1.BackendObjectReference{
+					Name: gatewayv1.ObjectName(instance.Name),
+					Port: ptr.To(gatewayv1.PortNumber(8000)), // Service port
+				},
+			},
+		},
+	}
+
+	return &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+			Labels:    labels,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(instance, controllerKind),
+			},
+		},
+		Spec: gatewayv1.HTTPRouteSpec{
+			CommonRouteSpec: gatewayv1.CommonRouteSpec{
+				ParentRefs: parentRefs,
+			},
+			Rules: []gatewayv1.HTTPRouteRule{
+				{
+					Matches:     matches,
+					BackendRefs: backendRefs,
+				},
+			},
 		},
 	}
 }

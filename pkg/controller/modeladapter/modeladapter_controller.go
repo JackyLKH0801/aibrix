@@ -55,6 +55,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 const (
@@ -85,6 +86,8 @@ const (
 	FailedServiceCreateReason = "ServiceCreateError"
 	// FailedEndpointSliceCreateReason is added in a model adapter when it cannot create a new replica set.
 	FailedEndpointSliceCreateReason = "EndpointSliceCreateError"
+	// FailedHTTPRouteCreateReason is added in a model adapter when it cannot create a new HTTPRoute.
+	FailedHTTPRouteCreateReason = "HTTPRouteCreateError"
 	// ModelAdapterLoadingErrorReason is added in a model adapter when it cannot be loaded in an engine pod.
 	ModelAdapterLoadingErrorReason = "ModelAdapterLoadingError"
 	// ValidationFailedReason is added when model adapter object fails the validation
@@ -247,6 +250,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		))).
 		Owns(&corev1.Service{}).
 		Owns(&discoveryv1.EndpointSlice{}).
+		Owns(&gatewayv1.HTTPRoute{}).
 		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(lookupLinkedModelAdapterInNamespace(mgr.GetClient())),
 			builder.WithPredicates(podWithLabelFilter(ModelAdapterPodTemplateLabelKey, ModelAdapterPodTemplateLabelValue, ModelIdentifierKey))).
 		Complete(r)
@@ -279,6 +283,8 @@ type ModelAdapterReconciler struct {
 //+kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=services/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=pods/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=model.aibrix.ai,resources=modeladapters,verbs=get;list;watch;create;update;patch;delete
@@ -401,6 +407,18 @@ func (r *ModelAdapterReconciler) DoReconcile(ctx context.Context, req ctrl.Reque
 		instance.Status.Phase = modelv1alpha1.ModelAdapterResourceCreated
 		condition := NewCondition(string(modelv1alpha1.ModelAdapterConditionTypeResourceCreated), metav1.ConditionFalse,
 			FailedEndpointSliceCreateReason, "endpointslice creation failure")
+		if err := r.updateStatus(ctx, instance, condition); err != nil {
+			klog.InfoS("Got error when updating status", "error", err, "ModelAdapter", instance)
+			return ctrl.Result{}, err
+		}
+		return ctrlResult, err
+	}
+
+	// Step 5: Reconcile HTTPRoute
+	if ctrlResult, err := r.reconcileHTTPRoute(ctx, instance); err != nil {
+		instance.Status.Phase = modelv1alpha1.ModelAdapterResourceCreated
+		condition := NewCondition(string(modelv1alpha1.ModelAdapterConditionTypeResourceCreated), metav1.ConditionFalse,
+			FailedHTTPRouteCreateReason, "httproute creation failure")
 		if err := r.updateStatus(ctx, instance, condition); err != nil {
 			klog.InfoS("Got error when updating status", "error", err, "ModelAdapter", instance)
 			return ctrl.Result{}, err
@@ -1156,6 +1174,68 @@ func (r *ModelAdapterReconciler) reconcileEndpointSlice(ctx context.Context, ins
 	return ctrl.Result{}, nil
 }
 
+func (r *ModelAdapterReconciler) reconcileHTTPRoute(ctx context.Context, instance *modelv1alpha1.ModelAdapter) (ctrl.Result, error) {
+	found := &gatewayv1.HTTPRoute{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: instance.Name}, found)
+	if err != nil && apierrors.IsNotFound(err) {
+		// HTTPRoute does not exist, create a new one
+		route := buildHTTPRoute(instance)
+		// Set the owner reference
+		if err := ctrl.SetControllerReference(instance, route, r.Scheme); err != nil {
+			klog.Error(err, "Failed to set controller reference to modelAdapter")
+			return ctrl.Result{}, err
+		}
+
+		// create route
+		klog.InfoS("Creating a new HTTPRoute", "route", klog.KObj(route))
+		if err = r.Create(ctx, route); err != nil {
+			klog.ErrorS(err, "Failed to create new HTTPRoute resource for ModelAdapter", "route", klog.KObj(route))
+			return ctrl.Result{}, err
+		}
+	} else if err != nil {
+		klog.ErrorS(err, "Failed to get HTTPRoute")
+		return ctrl.Result{}, err
+	}
+	// TODO: Update logic if needed
+	return ctrl.Result{}, nil
+}
+
+func (r *ModelAdapterReconciler) stampPodWithLabels(ctx context.Context, instance *modelv1alpha1.ModelAdapter, pod *corev1.Pod) error {
+	// Create a patch to update the pod labels
+	originalPod := pod.DeepCopy()
+	
+	if pod.Labels == nil {
+		pod.Labels = make(map[string]string)
+	}
+
+	changed := false
+
+	// Stamp tenant ID if present in ModelAdapter
+	if tenantID, ok := instance.Labels[constants.TenantLabelID]; ok {
+		if pod.Labels[constants.TenantLabelID] != tenantID {
+			pod.Labels[constants.TenantLabelID] = tenantID
+			changed = true
+		}
+	}
+
+	// Stamp adapter specific label
+	// Format: model.aibrix.ai/adapter.<adapter-name> = "true"
+	adapterLabelKey := fmt.Sprintf("model.aibrix.ai/adapter.%s", instance.Name)
+	if pod.Labels[adapterLabelKey] != "true" {
+		pod.Labels[adapterLabelKey] = "true"
+		changed = true
+	}
+
+	if changed {
+		klog.V(4).InfoS("Stamping pod with labels", "pod", pod.Name, "labels", pod.Labels)
+		if err := r.Patch(ctx, pod, client.MergeFrom(originalPod)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *ModelAdapterReconciler) inconsistentModelAdapterStatus(oldStatus, newStatus modelv1alpha1.ModelAdapterStatus) bool {
 	// Implement your logic to check if the status is inconsistent
 	if oldStatus.Phase != newStatus.Phase || !equalStringSlices(oldStatus.Instances, newStatus.Instances) {
@@ -1265,6 +1345,13 @@ func (r *ModelAdapterReconciler) tryLoadModelAdapterOnPod(ctx context.Context, i
 	// Success - reset retry count
 	r.clearRetryInfo(instance, pod.Name)
 	klog.InfoS("Successfully loaded adapter on pod", "pod", pod.Name, "ModelAdapter", klog.KObj(instance))
+
+	// Stamp pod with labels
+	if err := r.stampPodWithLabels(ctx, instance, pod); err != nil {
+		klog.ErrorS(err, "Failed to stamp pod with labels", "pod", pod.Name, "ModelAdapter", klog.KObj(instance))
+		// We don't fail the loading process if stamping fails, but we log it
+	}
+
 	return true, false, nil
 }
 
