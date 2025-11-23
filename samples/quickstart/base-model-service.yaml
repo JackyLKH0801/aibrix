@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen25-15b-instruct
+  namespace: default
+  labels:
+    model.aibrix.ai/name: qwen2.5-1.5b-instruct
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    model.aibrix.ai/name: qwen2.5-1.5b-instruct
+    model.aibrix.ai/port: "8000"

@@ -33,6 +33,7 @@ import (
 	orchestrationv1alpha1 "github.com/vllm-project/aibrix/api/orchestration/v1alpha1"
 	"github.com/vllm-project/aibrix/pkg/features"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/vllm-project/aibrix/pkg/cert"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -91,6 +92,7 @@ func RegisterSchemas(scheme *runtime.Scheme) error {
 
 	if modelAdapterEnabled {
 		utilruntime.Must(modelv1alpha1.AddToScheme(scheme))
+		utilruntime.Must(gatewayv1.AddToScheme(scheme))
 	}
 
 	if distributedInferenceEnabled {

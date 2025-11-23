@@ -17,7 +17,13 @@ spec:
       labels:
         model.aibrix.ai/name: qwen2.5-1.5b-instruct
         model.aibrix.ai/port: "8000"
+      annotations:
+        model.aibrix.ai/sidecar-injection: "true"
     spec:
+      volumes:
+        - name: lora-storage
+          persistentVolumeClaim:
+            claimName: lora-storage
       containers:
         - command:
             - python3
@@ -37,12 +43,16 @@ spec:
             - "8192"
             - --gpu-memory-utilization
             - "0.85"
-          image: vllm/vllm-openai:v0.11.0
-          imagePullPolicy: IfNotPresent
+            - --enable-lora
+          image: vllm/vllm-openai:latest
+          imagePullPolicy: Always
           name: vllm-openai
           ports:
             - containerPort: 8000
               protocol: TCP
+          volumeMounts:
+            - name: lora-storage
+              mountPath: /data
           resources:
             limits:
               nvidia.com/gpu: "1"
@@ -75,3 +85,42 @@ spec:
             periodSeconds: 5
             successThreshold: 1
             timeoutSeconds: 1
+        - name: aibrix-runtime
+          image: aibrix/runtime:v0.4.0
+          command:
+            - aibrix_runtime
+            - --port
+            - "8080"
+          env:
+            - name: INFERENCE_ENGINE
+              value: vllm
+            - name: INFERENCE_ENGINE_ENDPOINT
+              value: http://localhost:8000
+          ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+          volumeMounts:
+            - name: lora-storage
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

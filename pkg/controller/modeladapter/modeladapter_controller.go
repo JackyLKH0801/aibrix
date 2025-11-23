@@ -381,7 +381,7 @@ func (r *ModelAdapterReconciler) DoReconcile(ctx context.Context, req ctrl.Reque
 		// retry any of the failure.
 		instance.Status.Phase = modelv1alpha1.ModelAdapterBound
 		condition := NewCondition(string(modelv1alpha1.ModelAdapterConditionTypeBound), metav1.ConditionFalse,
-			ModelAdapterLoadingErrorReason, fmt.Sprintf("ModelAdapter %s is loaded", klog.KObj(instance)))
+			ModelAdapterLoadingErrorReason, fmt.Sprintf("Failed to load ModelAdapter %s: %v", klog.KObj(instance), err))
 		if err := r.updateStatus(ctx, instance, condition); err != nil {
 			klog.InfoS("Got error when updating status", "cluster name", req.Name, "error", err, "ModelAdapter", instance)
 			return ctrl.Result{}, err
@@ -1298,6 +1298,7 @@ func (r *ModelAdapterReconciler) tryLoadModelAdapterOnPod(ctx context.Context, i
 
 	// Get retry count from annotations
 	retryCount, lastRetryTime := r.getRetryInfo(instance, pod.Name)
+	klog.InfoS("DEBUG: Retry info", "pod", pod.Name, "retryCount", retryCount, "MaxLoadingRetries", MaxLoadingRetries)
 
 	// Check if we should retry based on exponential backoff
 	backoffDuration := r.calculateExponentialBackoff(retryCount)

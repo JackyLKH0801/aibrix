@@ -64,9 +64,65 @@ type ModelAdapterSpec struct {
 	// +optional
 	RoutingHeaders []string `json:"routingHeaders,omitempty"`
 
+	// AuthConfig configures tenant authentication
+	// +optional
+	AuthConfig *AuthConfig `json:"authConfig,omitempty"`
+
+	// IsolationPolicy configures tenant isolation
+	// +optional
+	IsolationPolicy *IsolationPolicy `json:"isolationPolicy,omitempty"`
+
 	// Additional fields can be added here to customize the scheduling and deployment
 	// +optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+}
+
+// AuthConfig defines authentication settings for a tenant
+type AuthConfig struct {
+	// Enabled enables or disables authentication
+	// +kubebuilder:default=true
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Provider specifies the auth provider (e.g., "jwt", "oauth2", "none")
+	// +kubebuilder:validation:Enum=jwt;oauth2;none
+	// +kubebuilder:default=none
+	Provider string `json:"provider,omitempty"`
+
+	// SecretRef points to the secret containing auth credentials/keys
+	// +optional
+	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
+
+	// Issuer is the expected issuer for JWT tokens
+	// +optional
+	Issuer string `json:"issuer,omitempty"`
+
+	// Audience is the expected audience for JWT tokens
+	// +optional
+	Audience string `json:"audience,omitempty"`
+}
+
+// IsolationPolicy defines isolation settings for a tenant
+type IsolationPolicy struct {
+	// Strategy defines how isolation is enforced
+	// +kubebuilder:validation:Enum=namespace;pod;none
+	// +kubebuilder:default=pod
+	Strategy string `json:"strategy,omitempty"`
+
+	// Namespace is the target namespace for the model pods (required if strategy is namespace)
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// NodeSelector restricts the model pods to specific nodes
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations allows the model pods to be scheduled on tainted nodes
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// AllowCrossTenantAccess determines if other tenants can access this adapter
+	// +kubebuilder:default=false
+	AllowCrossTenantAccess bool `json:"allowCrossTenantAccess,omitempty"`
 }
 
 // ModelAdapterPhase is a string representation of the ModelAdapter lifecycle phase.
