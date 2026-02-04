@@ -1,40 +1,48 @@
 $url = "http://127.0.0.1:8095/v1/completions"
-$model = "qwen2.5-1.5b-instruct"
+$baseModel = "qwen2.5-1.5b-instruct"
 
-Write-Host "Sending requests to $url for model $model..."
+# Helper to send request with specific tenant and model
+function Test-Tenant {
+    param($name, $tid, $routeModelName, $expectSuccess=$true)
+    Write-Host "`n[TEST] Tenant: $name ($tid)"
+    Write-Host "       Routing via Header: model=$routeModelName"
+    Write-Host "       Request Body Model: model=$baseModel"
+    
+    $headers = @{ 
+        "Content-Type" = "application/json"; 
+        "X-Tenant-ID" = $tid;
+        # Envoy routes key off this header:
+        "model" = $routeModelName
+    }
 
-# Tenant A
-Write-Host "Sending request for Tenant A..."
-$headersA = @{ "Content-Type" = "application/json"; "X-Tenant-ID" = "tenant-a" }
-$bodyA = @{ model = $model; prompt = "Write a hello world function in Python"; max_tokens = 50 } | ConvertTo-Json
-try {
-    $responseA = Invoke-RestMethod -Uri $url -Method Post -Headers $headersA -Body $bodyA
-    Write-Host "Response A:"
-    $responseA | ConvertTo-Json -Depth 5
-} catch {
-    Write-Host "Error Tenant A: $_"
+    # vLLM/Runtime needs to know the ACTUAL running model name
+    $body = @{ model = $baseModel; prompt = "Hello from $name"; max_tokens = 50 } | ConvertTo-Json
+    
+    try {
+        $resp = Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body $body
+        if ($expectSuccess) { 
+            Write-Host "Response: Success" 
+            # Write-Host ($resp | ConvertTo-Json -Depth 2)
+        }
+        else { Write-Host "WARNING: Unexpected Success!" }
+    } catch {
+        # Check for 404 (Not Found) or 503 (Service Unavailable) which indicates routing blocked/missing
+        if (-not $expectSuccess) {
+             Write-Host "SUCCESS: Access Denied as expected. (Error: $($_.Exception.Message))"
+        }
+        else {
+             Write-Host "Error: $($_.Exception.Message)"
+             if ($_.ErrorDetails) { Write-Host "Details: $($_.ErrorDetails.Message)" }
+        }
+    }
 }
 
-# Tenant B
-Write-Host "Sending request for Tenant B..."
-$headersB = @{ "Content-Type" = "application/json"; "X-Tenant-ID" = "tenant-b" }
-$bodyB = @{ model = $model; prompt = "Write a hello world function in Go"; max_tokens = 50 } | ConvertTo-Json
-try {
-    $responseB = Invoke-RestMethod -Uri $url -Method Post -Headers $headersB -Body $bodyB
-    Write-Host "Response B:"
-    $responseB | ConvertTo-Json -Depth 5
-} catch {
-    Write-Host "Error Tenant B: $_"
-}
+# 1. Tenant A (Should Succeed)
+Test-Tenant -name "Tenant A" -tid "tenant-a" -routeModelName "qwen-code-lora-tenant" -expectSuccess $true
 
-# Default Tenant
-Write-Host "Sending request for Default Tenant..."
-$headersDefault = @{ "Content-Type" = "application/json" }
-$bodyDefault = @{ model = $model; prompt = "Write a hello world function in Java"; max_tokens = 50 } | ConvertTo-Json
-try {
-    $responseDefault = Invoke-RestMethod -Uri $url -Method Post -Headers $headersDefault -Body $bodyDefault
-    Write-Host "Response Default:"
-    $responseDefault | ConvertTo-Json -Depth 5
-} catch {
-    Write-Host "Error Default: $_"
-}
+# 2. Tenant B (Should Succeed)
+Test-Tenant -name "Tenant B" -tid "tenant-b" -routeModelName "qwen-code-lora-tenant-b" -expectSuccess $true
+
+# 3. Hacker (Should Fail - Accessing Tenant A`'s model with wrong TID)
+Test-Tenant -name "Hacker" -tid "hacker-tenant" -routeModelName "qwen-code-lora-tenant" -expectSuccess $false
+

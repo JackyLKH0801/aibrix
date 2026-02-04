@@ -1,0 +1,28 @@
+apiVersion: model.aibrix.ai/v1alpha1
+kind: ModelAdapter
+metadata:
+  name: qwen-code-lora-tenant
+  namespace: default
+  labels:
+    model.aibrix.ai/name: "qwen-code-lora-tenant"
+    model.aibrix.ai/port: "8000"
+    tenant.aibrix.ai/id: "tenant-a"
+spec:
+  baseModel: qwen2.5-1.5b-instruct
+  podSelector:
+    matchLabels:
+      model.aibrix.ai/name: qwen2.5-1.5b-instruct
+      adapter.model.aibrix.ai/enabled: "true"
+  artifactURL: /data/lora-adapter/lora-adapter
+  
+  authConfig:
+    enabled: true
+    provider: "jwt"
+    secretRef:
+      name: "auth-secret"
+      key: "client-secret"
+
+  isolationPolicy:
+    strategy: "namespace"
+    namespace: "tenant-a"
+
