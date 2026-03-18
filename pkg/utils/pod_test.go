@@ -183,6 +183,19 @@ var _ = Describe("Pod", func() {
 			Expect(result).To(Equal(expected))
 		})
 
+		It("should return correct stormservice name from pod labels", func() {
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"storm-service-name": "test-stormservice",
+					},
+				},
+			}
+			expected := "test-stormservice"
+			result := DeploymentNameFromPod(pod)
+			Expect(result).To(Equal(expected))
+		})
+
 		It("should DeploymentNameFromPod return empty string if no valid source found", func() {
 			pod := &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{

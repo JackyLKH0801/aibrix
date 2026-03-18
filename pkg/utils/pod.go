@@ -286,6 +286,8 @@ func FilterPodsByLabel(pods []*v1.Pod, labelKey, labelValue string) []*v1.Pod {
 func DeploymentNameFromPod(pod *v1.Pod) string {
 	if fleet, ok := pod.Labels[ReyClusterFleetIdentifier]; ok {
 		return fleet
+	} else if stormServiceName, ok := pod.Labels["storm-service-name"]; ok {
+		return stormServiceName
 	} else if dpName, ok := pod.Labels[DeploymentIdentifier]; ok {
 		// double check if RayClusterNodeType is not available
 		isRayNode, rayOK := pod.Labels[RayClusterIdentifier]

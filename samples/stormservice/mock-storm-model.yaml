@@ -1,0 +1,35 @@
+apiVersion: orchestration.aibrix.ai/v1alpha1
+kind: StormService
+metadata:
+  name: mock-storm-model
+  namespace: default
+  labels:
+    # This label triggers the ModelRouter to create an HTTPRoute
+    model.aibrix.ai/name: mock-storm-model
+    # webhooks required port, if not set, it uses default 8000
+    model.aibrix.ai/port: "8000"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-storm-model
+  template:
+    metadata:
+      labels:
+        app: mock-storm-model
+    spec:
+      roles:
+        - name: head
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: model-server
+                  # Using a simple echo server to simulate a model server
+                  image: ealen/echo-server
+                  env:
+                    - name: PORT
+                      value: "8000"
+                  ports:
+                    - containerPort: 8000
+                      name: http

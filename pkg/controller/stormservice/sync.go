@@ -26,6 +26,7 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -71,6 +72,28 @@ func (r *StormServiceReconciler) sync(ctx context.Context, stormService *orchest
 }
 
 func (r *StormServiceReconciler) syncHeadlessService(ctx context.Context, service *orchestrationv1alpha1.StormService) error {
+	processedPorts := make(map[int32]struct{})
+	var servicePorts []corev1.ServicePort
+	if service.Spec.Template.Spec != nil {
+		for _, role := range service.Spec.Template.Spec.Roles {
+			if role.Template.Spec.Containers != nil {
+				for _, container := range role.Template.Spec.Containers {
+					for _, p := range container.Ports {
+						if _, exists := processedPorts[p.ContainerPort]; !exists {
+							processedPorts[p.ContainerPort] = struct{}{}
+							servicePorts = append(servicePorts, corev1.ServicePort{
+								Name:       p.Name,
+								Protocol:   p.Protocol,
+								Port:       p.ContainerPort,
+								TargetPort: intstr.FromInt(int(p.ContainerPort)),
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
 	expectedService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      service.Name,
@@ -85,6 +108,7 @@ func (r *StormServiceReconciler) syncHeadlessService(ctx context.Context, servic
 			ClusterIP:                corev1.ClusterIPNone,
 			Selector:                 map[string]string{constants.StormServiceNameLabelKey: service.Name},
 			PublishNotReadyAddresses: true,
+			Ports:                    servicePorts,
 		},
 	}
 

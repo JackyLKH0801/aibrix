@@ -59,6 +59,7 @@ const (
 
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=orchestration.aibrix.ai,resources=rayclusterfleets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=orchestration.aibrix.ai,resources=stormservices,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=referencegrants,verbs=get;list;watch;create;update;patch;delete
 
@@ -77,6 +78,11 @@ func Add(mgr manager.Manager, runtimeConfig config.RuntimeConfig) error {
 	}
 
 	fleetInformer, err := cacher.GetInformer(context.TODO(), &orchestrationv1alpha1.RayClusterFleet{})
+	if err != nil {
+		return err
+	}
+
+	stormServiceInformer, err := cacher.GetInformer(context.TODO(), &orchestrationv1alpha1.StormService{})
 	if err != nil {
 		return err
 	}
@@ -108,6 +114,14 @@ func Add(mgr manager.Manager, runtimeConfig config.RuntimeConfig) error {
 	_, err = fleetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    modelRouter.addRouteFromRayClusterFleet,
 		DeleteFunc: modelRouter.deleteRouteFromRayClusterFleet,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = stormServiceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    modelRouter.addRouteFromStormService,
+		DeleteFunc: modelRouter.deleteRouteFromStormService,
 	})
 
 	return err
@@ -177,6 +191,26 @@ func (m *ModelRouter) deleteRouteFromRayClusterFleet(obj interface{}) {
 		}
 	}
 	m.deleteHTTPRoute(fleet.Namespace, fleet.Labels)
+}
+
+func (m *ModelRouter) addRouteFromStormService(obj interface{}) {
+	stormService := obj.(*orchestrationv1alpha1.StormService)
+	m.createHTTPRoute(stormService.Namespace, stormService.Labels)
+}
+
+func (m *ModelRouter) deleteRouteFromStormService(obj interface{}) {
+	stormService, ok := obj.(*orchestrationv1alpha1.StormService)
+	if !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return
+		}
+		stormService, ok = tombstone.Obj.(*orchestrationv1alpha1.StormService)
+		if !ok {
+			return
+		}
+	}
+	m.deleteHTTPRoute(stormService.Namespace, stormService.Labels)
 }
 
 func (m *ModelRouter) createHTTPRoute(namespace string, labels map[string]string) {
